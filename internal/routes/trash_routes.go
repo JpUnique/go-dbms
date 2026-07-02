@@ -11,8 +11,8 @@ func RegisterTrashRoutes(router *gin.RouterGroup, handler *handler.TrashHandler)
 	trash := router.Group("/trash")
 	trash.Use(middleware.AuthMiddleware())
 
-	trash.GET("/", handler.GetAll)
+	trash.GET("", handler.GetAll)
 	trash.POST("/:id/restore", handler.Restore)
 	trash.DELETE("/:id", handler.Delete)
-	trash.DELETE("/", handler.Empty)
+	trash.DELETE("", handler.Empty)
 }

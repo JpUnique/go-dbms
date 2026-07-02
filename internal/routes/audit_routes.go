@@ -11,6 +11,6 @@ func RegisterAuditRoutes(router *gin.RouterGroup, handler *handler.AuditHandler)
 	group := router.Group("/audit")
 	group.Use(middleware.AuthMiddleware())
 
-	group.GET("/", handler.GetAll)
-	group.DELETE("/", handler.Delete)
+	group.GET("", handler.GetAll)
+	group.DELETE("", handler.Delete)
 }

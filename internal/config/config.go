@@ -5,7 +5,9 @@ import (
 	"os"
 )
 
-// Config structure
+// ======================================
+// CONFIG STRUCT
+// ======================================
 type Config struct {
 	Port string
 
@@ -21,50 +23,68 @@ type Config struct {
 	}
 
 	JWT struct {
-		AccessSecret  string
-		RefreshSecret string
+		AccessSecret    string
+		RefreshSecret   string
+		ChallengeSecret string
 	}
 
 	MinIO struct {
 		Endpoint  string
 		AccessKey string
 		SecretKey string
-		Bucket    string
 		UseSSL    string
 	}
 }
 
-// LoadConfig loads all environment variables
+// ======================================
+// LOAD CONFIG
+// ======================================
 func LoadConfig() *Config {
 
 	cfg := &Config{}
 
+	// ======================================
+	// SERVER
+	// ======================================
 	cfg.Port = getEnv("PORT", "4000")
 
-	// API version can be used for future versioning of API endpoints
+	// ======================================
+	// API VERSION
+	// ======================================
 	cfg.API.Version = getEnv("API_VERSION", "v1")
 
-	// database
+	// ======================================
+	// DATABASE
+	// ======================================
 	cfg.DB.URL = mustGetEnv("DATABASE_URL")
 
-	// jwt
+	// ======================================
+	// JWT
+	// ======================================
 	cfg.JWT.AccessSecret = mustGetEnv("JWT_ACCESS_SECRET")
 	cfg.JWT.RefreshSecret = mustGetEnv("JWT_REFRESH_SECRET")
+	cfg.JWT.ChallengeSecret = mustGetEnv("JWT_2FA_CHALLENGE_SECRET")
 
-	// minio
+	// ======================================
+	// MINIO ( GLOBAL BUCKET)
+	// ======================================
 	cfg.MinIO.Endpoint = mustGetEnv("MINIO_ENDPOINT")
 	cfg.MinIO.AccessKey = mustGetEnv("MINIO_ACCESS_KEY")
 	cfg.MinIO.SecretKey = mustGetEnv("MINIO_SECRET_KEY")
-	cfg.MinIO.Bucket = mustGetEnv("MINIO_BUCKET")
 	cfg.MinIO.UseSSL = getEnv("MINIO_USE_SSL", "false")
+
+	// ======================================
+	// FLAGS
+	// ======================================
 	cfg.RunMigration = getEnv("RUN_MIGRATION", "false") == "true"
 	cfg.RunSeed = getEnv("RUN_SEED", "false") == "true"
 
 	return cfg
 }
 
-// helpers
-
+// ======================================
+// HELPERS
+// ======================================
 func getEnv(key, fallback string) string {
 	val := os.Getenv(key)
 	if val == "" {

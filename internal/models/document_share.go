@@ -5,6 +5,7 @@ import "time"
 type DocumentShare struct {
 	ID           string     `json:"id"`
 	DocumentID   string     `json:"document_id"`
+	OwnerName    string     `json:"owner_name"`
 	ShareToken   string     `json:"share_token"`
 	SharedBy     string     `json:"shared_by"`
 	Permission   string     `json:"permission"`

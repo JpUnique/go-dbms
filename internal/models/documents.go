@@ -2,6 +2,17 @@ package models
 
 import "time"
 
+type DocumentWithOwner struct {
+	Document
+	OwnerName string `json:"owner_name"`
+}
+
+type DocumentWithMeta struct {
+	Document
+	OwnerName  *string `json:"owner_name,omitempty"`
+	FolderName *string `json:"folder_name,omitempty"`
+}
+
 type Document struct {
 	ID          string  `json:"id"`
 	Title       string  `json:"title"`
@@ -12,8 +23,9 @@ type Document struct {
 	FileType string `json:"file_type"`
 	FileSize int64  `json:"file_size"`
 
-	FolderID *string `json:"folder_id,omitempty"`
-	OwnerID  string  `json:"owner_id"`
+	FolderID   *string `json:"folder_id,omitempty"`
+	OwnerID    string  `json:"owner_id"`
+	Department *string `json:"department,omitempty"`
 
 	Status     string     `json:"status"`
 	IsStarred  bool       `json:"is_starred"`

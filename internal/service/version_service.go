@@ -26,62 +26,61 @@ func NewDocumentVersionService(
 	}
 }
 
+// ======================================
+// GET VERSIONS ✅
 func (s *DocumentVersionService) GetVersions(
 	ctx context.Context,
 	docID string,
 	userID string,
 ) ([]models.DocumentVersion, error) {
 
-	versions, err := s.versionRepo.GetByDocument(ctx, docID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("version service get versions: %w", err)
-	}
-
-	return versions, nil
+	return s.versionRepo.GetByDocument(ctx, docID, userID)
 }
 
+// ======================================
+// UPLOAD NEW VERSION ✅ FIXED
 func (s *DocumentVersionService) UploadVersion(
 	ctx context.Context,
 	docID string,
 	userID string,
+	username string,
 	file []byte,
 	fileName string,
 	fileType string,
 	changeNote string,
 ) (*models.DocumentVersion, error) {
 
-	//  start transaction
 	tx, err := s.versionRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("version service begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
+	// ✅ SAFE ROLLBACK HANDLING
 	defer func() {
-		if err != nil {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
 			tx.Rollback(ctx)
 		}
 	}()
 
-	// lock document row (FOR UPDATE)
+	// ✅ LOCK DOCUMENT
 	currentVersion, err := s.versionRepo.GetCurrentVersionForUpdate(ctx, tx, docID, userID)
 	if err != nil {
-		return nil, fmt.Errorf("version service lock document: %w", err)
-	}
-
-	if currentVersion == 0 {
-		return nil, utils.ErrNotFound
+		return nil, err
 	}
 
 	newVersion := currentVersion + 1
 
-	//  upload new file to MinIO
+	// ✅ Upload to MinIO (correct bucket)
 	fileKey := storage.GenerateFileKey(fileName)
 
-	if err := storage.Upload(fileKey, file, fileType); err != nil {
-		return nil, fmt.Errorf("version service upload file: %w", err)
+	if err = storage.Upload(username, fileKey, file, fileType); err != nil {
+		return nil, fmt.Errorf("upload file: %w", err)
 	}
 
-	//  insert new version
+	// ✅ CREATE NEW VERSION ROW
 	version := &models.DocumentVersion{
 		DocumentID: docID,
 		Version:    newVersion,
@@ -94,13 +93,12 @@ func (s *DocumentVersionService) UploadVersion(
 		version.ChangeNote = &changeNote
 	}
 
-	err = s.versionRepo.Create(ctx, tx, version)
-	if err != nil {
-		return nil, fmt.Errorf("version service insert version: %w", err)
+	if err = s.versionRepo.Create(ctx, tx, version); err != nil {
+		return nil, err
 	}
 
-	// update main document
-	err = s.documentRepo.UpdateLatestVersion(
+	// ✅ UPDATE MAIN DOCUMENT
+	if err = s.documentRepo.UpdateLatestVersion(
 		ctx,
 		tx,
 		docID,
@@ -110,19 +108,20 @@ func (s *DocumentVersionService) UploadVersion(
 		fileName,
 		fileType,
 		int64(len(file)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("version service update document: %w", err)
+	); err != nil {
+		return nil, err
 	}
 
-	// commit transaction
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("version service commit: %w", err)
+	// ✅ COMMIT
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 
 	return version, nil
 }
 
+// ======================================
+// DOWNLOAD VERSION ✅ FIXED
 func (s *DocumentVersionService) DownloadVersion(
 	ctx context.Context,
 	docID string,
@@ -130,21 +129,21 @@ func (s *DocumentVersionService) DownloadVersion(
 	userID string,
 ) (string, string, error) {
 
-	version, fileName, err :=
+	version, fileName, ownerName, err :=
 		s.versionRepo.GetByID(ctx, docID, versionID, userID)
 
 	if err != nil {
-		return "", "", fmt.Errorf("version service download: %w", err)
+		return "", "", fmt.Errorf("download version: %w", err)
 	}
 
 	if version == nil {
 		return "", "", utils.ErrNotFound
 	}
 
-	// generate presigned URL
-	url, err := storage.GetDownloadURL(version.FileKey)
+	// ✅ Use correct bucket owner
+	url, err := storage.GetDownloadURL(ownerName, version.FileKey)
 	if err != nil {
-		return "", "", fmt.Errorf("version service generate url: %w", err)
+		return "", "", fmt.Errorf("generate url: %w", err)
 	}
 
 	return url, fileName, nil

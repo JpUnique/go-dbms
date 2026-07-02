@@ -32,8 +32,10 @@ func (r *FolderRepository) GetAllFolders(
 	args := []interface{}{userID}
 	argIndex := 2
 
-	// ✅ parent filter
-	if parentID == "null" || parentID == "" {
+	// parent_id=null  → root folders only
+	// parent_id=<id>  → children of that folder
+	// (no param)      → all folders for this user (sidebar tree / pickers)
+	if parentID == "null" {
 		conditions = append(conditions, "f.parent_id IS NULL")
 	} else if parentID != "" {
 		conditions = append(conditions, fmt.Sprintf("f.parent_id = $%d", argIndex))

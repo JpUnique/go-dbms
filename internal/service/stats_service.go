@@ -21,7 +21,11 @@ func (s *StatsService) GetDashboard(
 	role string,
 ) (map[string]interface{}, error) {
 
-	isAdmin := role == "admin"
+	// TEMP-NO-ROLES: was `isAdmin := role == "admin"` — everyone sees
+	// system-wide dashboard stats while testing. Restore the line above
+	// once role-based access is reintroduced.
+	_ = role
+	isAdmin := true
 
 	data, err := s.repo.GetDashboard(ctx, userID, isAdmin)
 	if err != nil {
@@ -35,9 +39,13 @@ func (s *StatsService) GetActivity(
 	ctx context.Context,
 	userID string,
 	role string,
+	period string,
 ) ([]map[string]interface{}, error) {
 
-	isAdmin := role == "admin"
+	// TEMP-NO-ROLES: was `isAdmin := role == "admin"` — restore once
+	// role-based access is reintroduced.
+	_ = role
+	isAdmin := true
 
-	return s.repo.GetActivity(ctx, userID, isAdmin)
+	return s.repo.GetActivity(ctx, userID, isAdmin, period)
 }

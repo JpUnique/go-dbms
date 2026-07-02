@@ -22,7 +22,7 @@ func (h *AuditHandler) GetAll(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	role, _ := c.Get("role")
 
-	// ✅ query params
+	// query params
 	userFilter := c.Query("user_id")
 	resourceType := c.Query("resource_type")
 	resourceID := c.Query("resource_id")
@@ -56,14 +56,16 @@ func (h *AuditHandler) GetAll(c *gin.Context) {
 	})
 }
 
+// TEMP-NO-ROLES: admin-only check disabled for testing — restore the block
+// below once role-based access is reintroduced.
 func (h *AuditHandler) Delete(c *gin.Context) {
 
-	role, _ := c.Get("role")
-
-	if role.(string) != "admin" {
-		utils.Error(c, http.StatusForbidden, "admin only")
-		return
-	}
+	// TEMP-NO-ROLES: was
+	// role, _ := c.Get("role")
+	// if role.(string) != "admin" {
+	// 	utils.Error(c, http.StatusForbidden, "admin only")
+	// 	return
+	// }
 
 	before := c.Query("before")
 

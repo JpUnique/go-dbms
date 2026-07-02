@@ -31,8 +31,7 @@ func (h *FolderHandler) GetAll(c *gin.Context) {
 	// query params
 	parentID := c.Query("parent_id")
 
-	// simple pagination defaults (can improve later)
-	limit := 10
+	limit := 200
 	offset := 0
 
 	folders, err := h.service.GetAllFolders(

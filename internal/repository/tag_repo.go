@@ -192,6 +192,44 @@ func (r *TagRepository) Detach(
 
 	return nil
 }
+func (r *TagRepository) GetDocumentsByTag(
+	ctx context.Context,
+	tagID string,
+) ([]models.DocumentWithOwner, error) {
+
+	query := `
+    SELECT d.id, d.title, d.description, d.file_name, d.file_key, d.file_type, d.file_size,
+           d.folder_id, d.owner_id, d.department, d.status, d.is_starred, d.version,
+           d.last_accessed, d.created_at, d.updated_at, u.name AS owner_name
+    FROM documents d
+    JOIN document_tags dt ON dt.document_id = d.id
+    JOIN users u ON u.id = d.owner_id
+    WHERE dt.tag_id = $1 AND d.deleted_at IS NULL
+    ORDER BY d.created_at DESC
+    `
+
+	rows, err := r.db.Query(ctx, query, tagID)
+	if err != nil {
+		return nil, fmt.Errorf("tag repo get documents by tag: %w", err)
+	}
+	defer rows.Close()
+
+	var docs []models.DocumentWithOwner
+	for rows.Next() {
+		var d models.DocumentWithOwner
+		err := rows.Scan(
+			&d.ID, &d.Title, &d.Description, &d.FileName, &d.FileKey, &d.FileType, &d.FileSize,
+			&d.FolderID, &d.OwnerID, &d.Department, &d.Status, &d.IsStarred, &d.Version,
+			&d.LastAccess, &d.CreatedAt, &d.UpdatedAt, &d.OwnerName,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("tag repo scan document: %w", err)
+		}
+		docs = append(docs, d)
+	}
+	return docs, rows.Err()
+}
+
 func (r *TagRepository) GetByDocument(
 	ctx context.Context,
 	docID string,

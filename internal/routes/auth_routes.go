@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/JpUnique/go-dbms/internal/handler"
 	"github.com/JpUnique/go-dbms/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -17,10 +19,16 @@ func RegisterAuthRoutes(
 	// =========================
 	auth := router.Group("/auth")
 
+	// 6-digit-code-guessing surfaces get a tighter limiter than the
+	// general-purpose one (both are IP-based, in-memory, per-instance).
+	codeGuessLimiter := middleware.NewRateLimiter(8, time.Minute)
+
 	// PUBLIC
 	auth.POST("/register", authHandler.Register)
 	auth.POST("/login", authHandler.Login)
+	auth.POST("/login/verify", codeGuessLimiter, authHandler.LoginVerify)
 	auth.POST("/refresh", authHandler.Refresh)
+	auth.POST("/reset-password", codeGuessLimiter, authHandler.ResetPasswordTwoFactor)
 
 	// PROTECTED
 	authProtected := auth.Group("/")
@@ -28,9 +36,10 @@ func RegisterAuthRoutes(
 
 	authProtected.POST("/logout", authHandler.Logout)
 	authProtected.GET("/me", authHandler.Me)
-
-	// CHANGE PASSWORD belongs to auth
 	authProtected.PUT("/change-password", authHandler.ChangePassword)
+
+	authProtected.POST("/2fa/enable", authHandler.Enable2FA)
+	authProtected.POST("/2fa/verify", authHandler.Verify2FA)
 
 	// =========================
 	// USER ROUTES
@@ -41,6 +50,16 @@ func RegisterAuthRoutes(
 	// viewer endpoints
 	users.PUT("/me", authHandler.UpdateProfile)
 
-	// admin endpoints
-	users.GET("/", authHandler.GetAllUsers)
+	users.GET("/preferences", authHandler.GetPreferences)
+	users.PUT("/preferences", authHandler.UpdatePreferences)
+	users.GET("/stats/departments", authHandler.GetDepartmentStats)
+	users.GET("/directory", authHandler.GetDirectory) // workspace member list — any auth'd user
+
+	// user management endpoints
+	users.GET("", authHandler.GetAllUsers)
+	users.POST("", authHandler.AdminCreateUser)
+	users.PATCH("/:id", authHandler.AdminUpdateUser)
+	users.PATCH("/:id/status", authHandler.AdminToggleStatus)
+	users.POST("/:id/reset-password", authHandler.AdminResetPassword)
+	users.DELETE("/:id", authHandler.AdminDeleteUser)
 }

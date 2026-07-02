@@ -8,17 +8,15 @@ import (
 
 func RegisterShareRoutes(router *gin.RouterGroup, handler *handler.ShareHandler) {
 
-	shares := router.Group("/shares")
+	// public (no auth)
+	pub := router.Group("/shares")
+	pub.GET("/public/:token", handler.PublicAccess)
+	pub.POST("/public/:token/download", handler.Download)
 
 	// protected
-	protected := shares.Group("/")
-	protected.Use(middleware.AuthMiddleware())
-
-	protected.POST("/", handler.Create)
-	protected.GET("/", handler.GetAll)
-	protected.DELETE("/:id", handler.Delete)
-
-	// public
-	shares.GET("/public/:token", handler.PublicAccess)
-	shares.POST("/public/:token/download", handler.Download)
+	shares := router.Group("/shares")
+	shares.Use(middleware.AuthMiddleware())
+	shares.POST("", handler.Create)
+	shares.GET("", handler.GetAll)
+	shares.DELETE("/:id", handler.Delete)
 }

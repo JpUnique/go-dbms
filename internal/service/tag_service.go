@@ -25,7 +25,7 @@ func (s *TagService) GetAll(ctx context.Context) ([]models.Tag, error) {
 }
 
 func (s *TagService) Create(ctx context.Context, name string, color string) (*models.Tag, error) {
-	name = strings.TrimSpace(strings.ToLower(name))
+	name = strings.TrimSpace(name)
 	return s.repo.Create(ctx, name, color)
 }
 
@@ -55,6 +55,10 @@ func (s *TagService) Detach(ctx context.Context, docID, tagID, userID string) er
 	}
 
 	return s.repo.Detach(ctx, docID, tagID)
+}
+
+func (s *TagService) GetDocumentsByTag(ctx context.Context, tagID string) ([]models.DocumentWithOwner, error) {
+	return s.repo.GetDocumentsByTag(ctx, tagID)
 }
 
 func (s *TagService) GetByDocument(

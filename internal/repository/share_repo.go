@@ -72,7 +72,7 @@ func (r *ShareRepository) GetAll(
 	}
 	defer rows.Close()
 
-	var shares []models.DocumentShare
+	shares := []models.DocumentShare{}
 
 	for rows.Next() {
 		var s models.DocumentShare
@@ -131,12 +131,19 @@ func (r *ShareRepository) GetByToken(
 ) (*models.DocumentShare, *models.Document, error) {
 
 	query := `
-    SELECT s.id, s.document_id, s.share_token, s.shared_by,
-           s.permission, s.password_hash, s.expires_at,
-           s.access_count, s.created_at,
-           d.id, d.title, d.file_name, d.file_type, d.file_size, d.file_key
+    SELECT
+        s.id, s.document_id, s.share_token, s.shared_by,
+        s.permission, s.password_hash, s.expires_at,
+        s.access_count, s.created_at,
+
+        d.id, d.title, d.file_name, d.file_type, d.file_size, d.file_key, d.owner_id,
+
+        u.name
+
     FROM document_shares s
     JOIN documents d ON s.document_id = d.id
+    JOIN users u ON d.owner_id = u.id
+
     WHERE s.share_token = $1
     `
 
@@ -153,12 +160,16 @@ func (r *ShareRepository) GetByToken(
 		&share.ExpiresAt,
 		&share.AccessCount,
 		&share.CreatedAt,
+
 		&doc.ID,
 		&doc.Title,
 		&doc.FileName,
 		&doc.FileType,
 		&doc.FileSize,
 		&doc.FileKey,
+		&doc.OwnerID,
+
+		&share.OwnerName,
 	)
 
 	if err != nil {

@@ -38,10 +38,13 @@ func (h *StatsHandler) Activity(c *gin.Context) {
 	userID, _ := c.Get("userId")
 	role, _ := c.Get("role")
 
+	period := c.DefaultQuery("period", "week") // day | week | month | year
+
 	data, err := h.service.GetActivity(
 		c.Request.Context(),
 		userID.(string),
 		role.(string),
+		period,
 	)
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "failed to load activity")

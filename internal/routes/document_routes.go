@@ -12,6 +12,9 @@ func RegisterDocumentRoutes(
 	documentHandler *handler.DocumentHandler,
 ) {
 
+	// Token-authenticated streaming (no middleware — handler validates ?token= itself)
+	router.GET("/documents/:id/stream", documentHandler.Stream)
+
 	docs := router.Group("/documents")
 	docs.Use(middleware.AuthMiddleware())
 
@@ -19,8 +22,8 @@ func RegisterDocumentRoutes(
 	// DOCUMENT ENDPOINTS
 	// =========================
 
-	docs.POST("/", documentHandler.Upload)
-	docs.GET("/", documentHandler.GetAll)
+	docs.POST("", documentHandler.Upload)
+	docs.GET("", documentHandler.GetAllByFilter)
 	docs.GET("/:id", documentHandler.GetOne)
 	docs.GET("/:id/download", documentHandler.Download)
 	docs.PATCH("/:id", documentHandler.Update)

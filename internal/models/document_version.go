@@ -14,9 +14,10 @@ type DocumentVersion struct {
 }
 
 type DocumentQuery struct {
-	Page    int    `form:"page"`
-	Limit   int    `form:"limit"`
-	Search  string `form:"search"`
-	Status  string `form:"status"`
-	Starred *bool  `form:"starred"`
+	Page     int    `form:"page"`
+	Limit    int    `form:"limit"`
+	Search   string `form:"search"`
+	Status   string `form:"status"`
+	Starred  string `form:"starred"`   // "true" | "false" | "" (empty = no filter)
+	FolderID string `form:"folder_id"` // UUID string; empty = no filter
 }

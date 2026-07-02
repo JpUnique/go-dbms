@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -12,19 +13,58 @@ import (
 
 var Pool *pgxpool.Pool
 
-// Initialize DB connection
-func ConnectDB() *pgxpool.Pool {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL is not set")
+// ======================================
+// BUILD DATABASE URL (FLEXIBLE)
+// ======================================
+func getDatabaseURL() string {
+
+	// use DATABASE_URL if provided
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
 	}
+
+	// fallback to individual env vars
+	host := os.Getenv("DB_HOST")
+	port := os.Getenv("DB_PORT")
+	user := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	name := os.Getenv("DB_NAME")
+	sslmode := os.Getenv("DB_SSLMODE")
+
+	if host == "" {
+		host = "localhost"
+	}
+	if port == "" {
+		port = "5432"
+	}
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+
+	return fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+		user,
+		password,
+		host,
+		port,
+		name,
+		sslmode,
+	)
+}
+
+// ======================================
+// CONNECT DATABASE
+// ======================================
+func ConnectDB() *pgxpool.Pool {
+
+	dbURL := getDatabaseURL()
 
 	config, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		log.Fatal("Invalid database config:", err)
 	}
 
-	// Pool configuration (similar to pool.ts)
+	// pool tuning
 	config.MaxConns = 20
 	config.MinConns = 2
 	config.MaxConnLifetime = time.Hour
@@ -35,19 +75,22 @@ func ConnectDB() *pgxpool.Pool {
 		log.Fatal("Unable to connect to DB:", err)
 	}
 
-	// Verify connection
+	// verify connection
 	if err := pool.Ping(context.Background()); err != nil {
 		log.Fatal("Database not reachable:", err)
 	}
 
-	log.Println("Connected to PostgreSQL")
+	log.Println("✅ Connected to PostgreSQL")
 
 	Pool = pool
 	return pool
 }
 
-// Query helper (similar to pool.query)
+// ======================================
+// QUERY HELPER
+// ======================================
 func Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+
 	start := time.Now()
 
 	rows, err := Pool.Query(ctx, sql, args...)
@@ -63,7 +106,9 @@ func Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, erro
 	return rows, nil
 }
 
-// Transaction helper
+// ======================================
+// TRANSACTION HELPER
+// ======================================
 func WithTransaction(ctx context.Context, fn func(tx pgx.Tx) error) error {
 
 	tx, err := Pool.Begin(ctx)
@@ -73,7 +118,7 @@ func WithTransaction(ctx context.Context, fn func(tx pgx.Tx) error) error {
 
 	defer func() {
 		if r := recover(); r != nil {
-			tx.Rollback(ctx)
+			_ = tx.Rollback(ctx)
 			panic(r)
 		}
 	}()
@@ -86,7 +131,9 @@ func WithTransaction(ctx context.Context, fn func(tx pgx.Tx) error) error {
 	return tx.Commit(ctx)
 }
 
-// Graceful shutdown
+// ======================================
+// CLOSE DB (GRACEFUL SHUTDOWN)
+// ======================================
 func CloseDB() {
 	if Pool != nil {
 		log.Println("Closing database pool")

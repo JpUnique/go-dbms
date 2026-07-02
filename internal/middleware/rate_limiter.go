@@ -13,15 +13,13 @@ type clientLimiter struct {
 	lastReset time.Time
 }
 
-var (
-	clients = make(map[string]*clientLimiter)
-	mu      sync.Mutex
-	limit   = 20 // requests per window
-	window  = time.Minute
-)
+// NewRateLimiter returns an IP-based rate limiter with its own private
+// state, so multiple instances (e.g. a tighter limiter on 2FA/reset
+// endpoints alongside a looser default elsewhere) don't share counters.
+func NewRateLimiter(limit int, window time.Duration) gin.HandlerFunc {
 
-// RateLimitMiddleware basic protection
-func RateLimitMiddleware() gin.HandlerFunc {
+	clients := make(map[string]*clientLimiter)
+	var mu sync.Mutex
 
 	return func(c *gin.Context) {
 
@@ -56,4 +54,9 @@ func RateLimitMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// RateLimitMiddleware is the default general-purpose limiter (20 req/min/IP).
+func RateLimitMiddleware() gin.HandlerFunc {
+	return NewRateLimiter(20, time.Minute)
 }

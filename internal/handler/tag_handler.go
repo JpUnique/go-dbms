@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/JpUnique/go-dbms/internal/models"
 	"github.com/JpUnique/go-dbms/internal/service"
 	"github.com/JpUnique/go-dbms/internal/utils"
 	"github.com/gin-gonic/gin"
@@ -89,6 +90,19 @@ func (h *TagHandler) Delete(c *gin.Context) {
 	}
 
 	utils.Success(c, gin.H{"message": "tag deleted"})
+}
+
+func (h *TagHandler) GetDocuments(c *gin.Context) {
+	tagID := c.Param("id")
+	docs, err := h.service.GetDocumentsByTag(c.Request.Context(), tagID)
+	if err != nil {
+		utils.Error(c, http.StatusInternalServerError, "failed to fetch documents")
+		return
+	}
+	if docs == nil {
+		docs = []models.DocumentWithOwner{}
+	}
+	utils.Success(c, gin.H{"documents": docs})
 }
 
 func (h *TagHandler) Attach(c *gin.Context) {

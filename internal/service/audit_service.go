@@ -28,7 +28,11 @@ func (s *AuditService) GetAll(
 	offset int,
 ) ([]models.AuditLog, error) {
 
-	isAdmin := role == "admin"
+	// TEMP-NO-ROLES: was `isAdmin := role == "admin"` — everyone sees
+	// system-wide audit logs while testing. Restore the line above once
+	// role-based access is reintroduced.
+	_ = role
+	isAdmin := true
 
 	logs, err := s.repo.GetAll(
 		ctx,

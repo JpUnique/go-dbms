@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -15,22 +16,18 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-var (
-	client     *minio.Client
-	bucketName string
-)
+var client *minio.Client
 
-// ==============================
-// INIT MINIO (CALLED IN main.go)
-// ==============================
+// ======================================
+// INIT MINIO
+// ======================================
 func InitMinIO() error {
 
 	endpoint := os.Getenv("MINIO_ENDPOINT")
 	accessKey := os.Getenv("MINIO_ACCESS_KEY")
 	secretKey := os.Getenv("MINIO_SECRET_KEY")
-	bucketName = os.Getenv("MINIO_BUCKET")
 
-	if endpoint == "" || accessKey == "" || secretKey == "" || bucketName == "" {
+	if endpoint == "" || accessKey == "" || secretKey == "" {
 		return errors.New("minio configuration missing")
 	}
 
@@ -44,31 +41,44 @@ func InitMinIO() error {
 		return fmt.Errorf("minio init: %w", err)
 	}
 
-	// Check if bucket exists
-	exists, err := client.BucketExists(context.Background(), bucketName)
+	fmt.Println("✅ MinIO initialized")
+
+	return nil
+}
+
+// ======================================
+// GENERATE USER BUCKET NAME
+// ======================================
+func getUserBucket(username string) string {
+	return "user-" + strings.ToLower(username)
+}
+
+// ======================================
+// ENSURE BUCKET EXISTS
+// ======================================
+func EnsureUserBucket(ctx context.Context, username string) error {
+
+	bucket := getUserBucket(username)
+
+	exists, err := client.BucketExists(ctx, bucket)
 	if err != nil {
-		return fmt.Errorf("minio check bucket: %w", err)
+		return err
 	}
 
-	//  Create bucket if not exists
 	if !exists {
-
-		err = client.MakeBucket(
-			context.Background(),
-			bucketName,
-			minio.MakeBucketOptions{},
-		)
+		err = client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{})
 		if err != nil {
-			return fmt.Errorf("minio create bucket: %w", err)
+			return fmt.Errorf("create bucket failed: %w", err)
 		}
+		fmt.Println("✅ Bucket created:", bucket)
 	}
 
 	return nil
 }
 
-// ==============================
+// ======================================
 // GENERATE FILE KEY
-// ==============================
+// ======================================
 func GenerateFileKey(fileName string) string {
 
 	ext := ""
@@ -79,20 +89,28 @@ func GenerateFileKey(fileName string) string {
 	return uuid.NewString() + ext
 }
 
-// ==============================
-// UPLOAD FILE
-// ==============================
-func Upload(fileKey string, data []byte, contentType string) error {
+// ======================================
+// UPLOAD FILE (PER USER)
+// ======================================
+func Upload(username, fileKey string, data []byte, contentType string) error {
 
 	if client == nil {
 		return errors.New("minio client not initialized")
 	}
 
+	ctx := context.Background()
+	bucket := getUserBucket(username)
+
+	//  ensure bucket exists
+	if err := EnsureUserBucket(ctx, username); err != nil {
+		return err
+	}
+
 	reader := bytes.NewReader(data)
 
 	_, err := client.PutObject(
-		context.Background(),
-		bucketName,
+		ctx,
+		bucket,
 		fileKey,
 		reader,
 		int64(len(data)),
@@ -102,56 +120,92 @@ func Upload(fileKey string, data []byte, contentType string) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("minio upload: %w", err)
+		return fmt.Errorf("upload failed: %w", err)
 	}
 
 	return nil
 }
 
-// ==============================
-// GET DOWNLOAD URL (PRESIGNED)
-// ==============================
-func GetDownloadURL(fileKey string) (string, error) {
+// ======================================
+// GET DOWNLOAD URL
+// ======================================
+func GetDownloadURL(username, fileKey string) (string, error) {
 
 	if client == nil {
 		return "", errors.New("minio client not initialized")
 	}
 
+	ctx := context.Background()
+	bucket := getUserBucket(username)
+
 	reqParams := make(url.Values)
 
-	url, err := client.PresignedGetObject(
-		context.Background(),
-		bucketName,
+	u, err := client.PresignedGetObject(
+		ctx,
+		bucket,
 		fileKey,
 		time.Minute*10,
 		reqParams,
 	)
 
 	if err != nil {
-		return "", fmt.Errorf("minio get url: %w", err)
+		return "", fmt.Errorf("get url failed: %w", err)
 	}
 
-	return url.String(), nil
+	return u.String(), nil
 }
 
-// ==============================
+// ======================================
+// GET FILE BYTES
+// ======================================
+func GetFileBytes(username, fileKey string) ([]byte, string, error) {
+	if client == nil {
+		return nil, "", errors.New("minio client not initialized")
+	}
+
+	ctx := context.Background()
+	bucket := getUserBucket(username)
+
+	obj, err := client.GetObject(ctx, bucket, fileKey, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, "", fmt.Errorf("get object failed: %w", err)
+	}
+	defer obj.Close()
+
+	info, err := obj.Stat()
+	if err != nil {
+		return nil, "", fmt.Errorf("stat object failed: %w", err)
+	}
+
+	data, err := io.ReadAll(obj)
+	if err != nil {
+		return nil, "", fmt.Errorf("read object failed: %w", err)
+	}
+
+	return data, info.ContentType, nil
+}
+
+// ======================================
 // DELETE FILE
-// ==============================
-func Delete(fileKey string) error {
+// ======================================
+func Delete(username, fileKey string) error {
 
 	if client == nil {
 		return errors.New("minio client not initialized")
 	}
 
+	ctx := context.Background()
+	bucket := getUserBucket(username)
+
 	err := client.RemoveObject(
-		context.Background(),
-		bucketName,
+		ctx,
+		bucket,
 		fileKey,
 		minio.RemoveObjectOptions{},
 	)
 
 	if err != nil {
-		return fmt.Errorf("minio delete: %w", err)
+		return fmt.Errorf("delete failed: %w", err)
 	}
 
 	return nil
