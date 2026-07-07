@@ -155,3 +155,40 @@ repo (e.g. the video splash-screen work in shadcn-ui/src). Deploying
 those requires the normal cycle: push/pull the new code, "pnpm build"
 on the server (VITE_API_URL is already baked correctly into
 .env.production), then restart the preview server as above.
+
+
+2026-07-07 — REGISTRATION BROKEN: CORS ONLY ALLOWED localhost:3000
+----------------------------------------------------------------------
+Symptom: user could not register from the real deployed site. curl
+against the API worked fine (201, wrote to Postgres) — the confusing
+part is curl doesn't enforce CORS, so it looked like the backend was
+healthy while the actual browser UI was fully blocked.
+
+Root cause: cmd/server/main.go's CORS allowlist hardcoded only
+"http://localhost:3000". The deployed frontend's real origin is
+"http://140.238.79.81:3000", which isn't in that map, so every
+browser fetch (register, login, everything) failed the CORS preflight
+with net::ERR_FAILED before it even reached the backend.
+
+Fix: added "http://140.238.79.81:3000" to the allowedOrigins map.
+Verify a fix like this with a real preflight, not curl:
+    curl -X OPTIONS http://140.238.79.81:4000/dbms/v1/auth/register \
+      -H "Origin: http://140.238.79.81:3000" \
+      -H "Access-Control-Request-Method: POST" -D - -o /dev/null
+  -> should show "Access-Control-Allow-Origin: http://140.238.79.81:3000"
+
+Deployed via the normal push/pull cycle, then rebuilt the backend
+image with no cache to be sure the fix was actually in the running
+container:
+    cd ~/go-dbms && git pull origin main
+    sudo docker compose build --no-cache backend
+    sudo docker compose up -d --force-recreate backend
+
+Frontend (video splash-screen + cardless auth pages) was deployed the
+same way: git pull, pnpm install, pnpm build, kill whatever's on
+:3000 by port (not pkill -f, see gotcha above), nohup npx vite preview
+--host 0.0.0.0 --port 3000.
+
+If CORS breaks again after a future domain/IP change, this map is the
+first place to check — there's no wildcard, every origin must be
+listed explicitly.
