@@ -150,7 +150,8 @@ func main() {
 
 		// Define allowed origins explicitly
 		allowedOrigins := map[string]bool{
-			"http://localhost:3000": true,
+			"http://localhost:3000":     true,
+			"http://140.238.79.81:3000": true, // Oracle Cloud deployment
 			// Add production domain here later: "https://yourdomain.com": true,
 		}
 

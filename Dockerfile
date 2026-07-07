@@ -28,8 +28,11 @@ WORKDIR /app
 # Copy binary
 COPY --from=builder /app/main .
 
-# Expose port
+# Copy migrations
+COPY --from=builder /app/migrations ./migrations
+
+#Expose port
 EXPOSE 4000
 
-# Run app
+#Run app
 CMD ["./main"]

@@ -1,0 +1,157 @@
+DEPLOYMENT RUNBOOK — go-dbms Backend + React Frontend on Oracle Cloud
+======================================================================
+
+1. SSH INTO THE SERVER
+-----------------------
+ssh -i ~/.ssh/oracle-dms-key.pem ubuntu@140.238.79.81
+
+
+2. BACKEND — DOCKER CONTAINERS
+--------------------------------
+Start everything:
+    cd ~/go-dbms
+    sudo docker compose up -d
+
+Check status:
+    sudo docker ps -a
+
+Should see 4 containers healthy/running:
+    go-dbms-backend-1   (4000)
+    go-dbms-postgres-1  (5430 -> 5432)
+    go-dbms-clamd-1     (3310)
+    go-dbms-minio-1     (9000-9001)
+
+If a container shows "Exited":
+    sudo docker start <container-name>
+
+View backend logs (debugging):
+    sudo docker logs go-dbms-backend-1 --tail 100 -f
+
+
+3. FRONTEND — REACT (VITE + PNPM)
+-----------------------------------
+One-time setup (Node, pnpm):
+    node --version
+    sudo corepack enable
+    corepack prepare pnpm@8.10.0 --activate
+    pnpm --version
+
+Install dependencies:
+    cd ~/react-dbms
+    pnpm install
+
+Set the backend API URL (must be the server's public IP, not localhost):
+    echo 'VITE_API_URL=http://140.238.79.81:4000/dbms/v1' > .env.production
+
+Build (required every time .env.production or source code changes —
+Vite bakes env vars in at BUILD time, not run time):
+    pnpm build
+
+Serve the build:
+    pkill -f "vite preview"    # stop any previous instance first
+    nohup npx vite preview --host 0.0.0.0 --port 3000 > preview.log 2>&1 &
+
+Note: --host 0.0.0.0 is required. Without it, Vite only listens on
+localhost and stays unreachable from outside the server.
+
+
+4. OPEN PORTS (needed once per port, persists after)
+------------------------------------------------------
+Every exposed port needs BOTH of the following, or it stays unreachable.
+
+a) OCI Console (browser):
+   Networking -> Virtual Cloud Networks -> your VCN -> Subnet ->
+   Security List (or NSG if attached to the instance) -> Add Ingress Rule
+     Source CIDR: 0.0.0.0/0 (tighten later)
+     Protocol: TCP
+     Ports needed: 4000 (backend API), 3000 (frontend)
+   Do NOT expose 5430 (Postgres) or 3310 (clamd) publicly.
+
+b) iptables on the instance (terminal):
+    sudo iptables -L INPUT -n --line-numbers     # inspect current rules first
+    sudo iptables -I INPUT -p tcp --dport 4000 -j ACCEPT
+    sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+    sudo netfilter-persistent save               # persist across reboot
+
+
+5. VERIFY
+----------
+    curl -I http://localhost:4000/dbms/v1/auth/login    # backend responds locally?
+    curl -I http://localhost:3000                        # frontend responds locally?
+
+Then in a browser:
+    Frontend: http://140.238.79.81:3000
+    Backend (JSON API only, no browsable UI): http://140.238.79.81:4000/dbms/v1/...
+
+
+COMMON GOTCHAS HIT SO FAR
+---------------------------
+- "pnpm run preview -- --host ... --port ..." inserts a stray "--" that
+  breaks Vite's flag parsing. Call "npx vite preview --host 0.0.0.0
+  --port 3000" directly instead.
+
+- Frontend defaults to http://localhost:4000 in src/services/api.ts if
+  VITE_API_URL isn't set before building. "localhost" in that context
+  means the BROWSER's machine, not the server, causing
+  ERR_CONNECTION_REFUSED.
+
+- "corepack enable" needs sudo since Node was installed system-wide.
+
+- Foreground processes (pnpm preview without nohup) die when the SSH
+  session ends. Always background long-running servers with nohup + &.
+
+- "docker compose down -v" removes volumes, not just containers — this
+  wipes the Postgres data (go-dbms_dms_pgdata) and MinIO data
+  (go-dbms_dms_minio) permanently. Only ever run plain "docker compose
+  down" (no -v) unless you explicitly intend to destroy all data.
+  RUN_MIGRATION=true will happily recreate the empty schema on next
+  boot, which masks the data loss — the app looks "fine", just empty.
+
+- "pkill -f 'vite preview'" run over SSH can self-match: the pattern
+  you're searching for is literally present in the remote shell's own
+  command line (...pkill -f 'vite preview'...), so pkill kills its own
+  invocation and drops the SSH session before finishing. Kill by port
+  instead: "sudo lsof -ti:3000 | xargs -r kill -9" (or -ti:4173 if it's
+  stuck on Vite's default port from the stray "--" gotcha above).
+
+
+2026-07-07 — STATUS CHECK / INCIDENT NOTES
+---------------------------------------------
+Found both the backend and frontend fully down on the server:
+  - All 4 Docker containers were gone (not even stopped) — bash
+    history showed "sudo docker compose down -v" had been run, which
+    deleted the Postgres/MinIO volumes. No prior data was recoverable;
+    schema was recreated fresh by RUN_MIGRATION=true on next boot.
+  - The frontend's vite preview process wasn't running either — the
+    last attempt used the buggy "pnpm preview -- --host ... --port
+    3000" form (stray "--", see gotcha above) and/or was left running
+    in the foreground, so it died with the SSH session.
+
+Fixed by:
+  1. "cd ~/go-dbms && sudo docker compose up -d" — all 4 containers
+     came up healthy, migrations ran clean ("[MIGRATION] completed
+     successfully").
+  2. Killed whatever was on ports 3000/4173, restarted the frontend
+     with "nohup npx vite preview --host 0.0.0.0 --port 3000 >
+     preview.log 2>&1 &" (see pkill self-match gotcha above — do not
+     use pkill -f for this over SSH).
+
+Verified end-to-end from an outside machine (not just localhost on
+the server):
+  - http://140.238.79.81:3000            -> 200 (frontend serving)
+  - POST /dbms/v1/auth/register           -> created a user, wrote to
+    Postgres, returned a real 2FA QR payload (then deleted the test
+    user via psql — DELETE FROM users WHERE email LIKE 'healthcheck%')
+  - POST /dbms/v1/auth/login (bad creds)  -> {"error":"invalid
+    credentials"} (proves it round-trips to Postgres, not just "port
+    open")
+  - MinIO  http://localhost:9000/minio/health/live -> 200
+  - Postgres: docker exec go-dbms-postgres-1 pg_isready -> accepting
+    connections
+
+Frontend/backend on the server are on whatever commit was last
+deployed there — they do NOT yet include local changes made in this
+repo (e.g. the video splash-screen work in shadcn-ui/src). Deploying
+those requires the normal cycle: push/pull the new code, "pnpm build"
+on the server (VITE_API_URL is already baked correctly into
+.env.production), then restart the preview server as above.
