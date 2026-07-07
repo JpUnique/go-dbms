@@ -123,8 +123,10 @@ func (s *AuthService) Login(
 	//  normalize username
 	username = strings.TrimSpace(username)
 
-	//  get user by username ONLY
-	user, err = s.userRepo.GetByUsername(ctx, username)
+	//  accept either the account's email or its display name — registration
+	//  only collects email, so a user typing their email into "Username" must
+	//  still resolve to their account.
+	user, err = s.userRepo.GetByEmailOrUsername(ctx, username)
 	if err != nil || user == nil {
 		return "", "", "", nil, utils.ErrInvalidCredentials
 	}
@@ -381,7 +383,7 @@ func (s *AuthService) ResetPasswordViaTwoFactor(
 
 	username = strings.TrimSpace(username)
 
-	user, err := s.userRepo.GetByUsername(ctx, username)
+	user, err := s.userRepo.GetByEmailOrUsername(ctx, username)
 	if err != nil || user == nil || user.Status != "active" {
 		return utils.ErrInvalidCredentials
 	}
