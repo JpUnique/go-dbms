@@ -30,3 +30,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# SSH keys - never commit
+*.pem
+*.key
+*.pub

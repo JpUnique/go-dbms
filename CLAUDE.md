@@ -1,4 +1,4 @@
-# CLAUDE.md
+![1783380932390](image/CLAUDE/1783380932390.png)![1783380934116](image/CLAUDE/1783380934116.png)![1783380961175](image/CLAUDE/1783380961175.png)![1783380962265](image/CLAUDE/1783380962265.png)![1783380966674](image/CLAUDE/1783380966674.png)# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
