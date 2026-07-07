@@ -192,3 +192,37 @@ same way: git pull, pnpm install, pnpm build, kill whatever's on
 If CORS breaks again after a future domain/IP change, this map is the
 first place to check — there's no wildcard, every origin must be
 listed explicitly.
+
+
+2026-07-07 — LOGIN FAILED WITH "invalid credentials" FOR REAL ACCOUNTS
+----------------------------------------------------------------------
+Symptom: user registered fine (account exists in Postgres, confirmed
+via psql), got the right password, but every login attempt returned
+401 "invalid credentials". The frontend's Login/reset-password pages
+both label the field "Username", so people naturally type the email
+they registered with.
+
+Root cause: AuthService.Login and ResetPasswordViaTwoFactor
+(internal/service/auth_service.go) both called
+userRepo.GetByUsername(ctx, username) — which runs `WHERE name = $1`,
+an EXACT case-sensitive match against users.name ONLY. Email is never
+checked. Registration only ever collects email + a display name, so
+typing the email (the obvious thing to type) into "Username" simply
+never matches any row → GetByUsername returns nil → treated the same
+as a wrong password.
+
+The repo already had userRepo.GetByEmailOrUsername (case-insensitive,
+matches either email or name) sitting unused right next to
+GetByUsername — it just was never wired into Login. Switched both call
+sites to it. (GetByUsername is still correct and still used for
+@mention resolution in comment_service.go — did not touch that one.)
+
+Verify a fix like this by proving the bug first, don't just trust the
+diff: register a throwaway user via curl, attempt login with the EMAIL
+on the currently-running (old) container — should 401 — then rebuild/
+redeploy and repeat the exact same curl — should now return a
+login_challenge. Delete the throwaway user afterward.
+
+Deployed the same way as the CORS fix: push, pull on server,
+`docker compose build --no-cache backend`, `up -d --force-recreate
+backend`.
