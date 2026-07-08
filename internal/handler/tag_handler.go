@@ -19,7 +19,10 @@ func NewTagHandler(service *service.TagService) *TagHandler {
 
 func (h *TagHandler) GetAll(c *gin.Context) {
 
-	tags, err := h.service.GetAll(c.Request.Context())
+	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
+
+	tags, err := h.service.GetAll(c.Request.Context(), userID.(string), role.(string))
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "failed to fetch tags")
 		return
@@ -94,7 +97,9 @@ func (h *TagHandler) Delete(c *gin.Context) {
 
 func (h *TagHandler) GetDocuments(c *gin.Context) {
 	tagID := c.Param("id")
-	docs, err := h.service.GetDocumentsByTag(c.Request.Context(), tagID)
+	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
+	docs, err := h.service.GetDocumentsByTag(c.Request.Context(), tagID, userID.(string), role.(string))
 	if err != nil {
 		utils.Error(c, http.StatusInternalServerError, "failed to fetch documents")
 		return

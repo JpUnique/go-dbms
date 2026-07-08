@@ -36,7 +36,10 @@ func RegisterAuthRoutes(
 
 	authProtected.POST("/logout", authHandler.Logout)
 	authProtected.GET("/me", authHandler.Me)
-	authProtected.PUT("/change-password", authHandler.ChangePassword)
+	// Self-service password change is admin-only — regular users can't
+	// change their own password; an admin resets it for them via
+	// POST /users/:id/reset-password instead.
+	authProtected.PUT("/change-password", middleware.AdminOnly(), authHandler.ChangePassword)
 
 	authProtected.POST("/2fa/enable", authHandler.Enable2FA)
 	authProtected.POST("/2fa/verify", authHandler.Verify2FA)

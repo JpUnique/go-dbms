@@ -29,24 +29,9 @@ func NewDocumentVersionService(
 	}
 }
 
-// resolveScope mirrors DocumentService.resolveScope — admins bypass
-// department scoping entirely, everyone else gets their own department
-// looked up so version access can be widened to "own uploads OR same
-// department", matching document view/edit access.
+// resolveScope delegates to the shared resolveDeptScope (see scope.go).
 func (s *DocumentVersionService) resolveScope(ctx context.Context, userID, role string) (isAdmin bool, department *string, err error) {
-	if role == "admin" {
-		return true, nil, nil
-	}
-
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return false, nil, fmt.Errorf("version service resolve scope: %w", err)
-	}
-	if user == nil || user.Department == nil || *user.Department == "" {
-		return false, nil, nil
-	}
-
-	return false, user.Department, nil
+	return resolveDeptScope(ctx, s.userRepo, userID, role)
 }
 
 // ======================================

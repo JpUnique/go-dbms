@@ -20,17 +20,32 @@ func NewTagRepository(db *pgxpool.Pool) *TagRepository {
 	return &TagRepository{db: db}
 }
 
+// GetAll lists only tags attached to at least one document the caller can
+// see: their own documents, plus (for non-admins with a department) every
+// document in that department — same visibility rule as documents
+// themselves. Admins deliberately see only tags on their OWN documents here
+// (not the whole org's) — consistent with admins' regular document list
+// staying personal; cross-department tag/document discovery happens via
+// the Departments page instead.
 func (r *TagRepository) GetAll(
 	ctx context.Context,
+	userID string,
+	department *string,
 ) ([]models.Tag, error) {
 
 	query := `
-    SELECT id, name, color, created_at
-    FROM tags
-    ORDER BY name ASC
+    SELECT DISTINCT t.id, t.name, t.color, t.created_at
+    FROM tags t
+    JOIN document_tags dt ON dt.tag_id = t.id
+    JOIN documents d ON d.id = dt.document_id
+    WHERE (
+      d.owner_id = $1
+      OR ($2::text IS NOT NULL AND d.department = $2)
+    )
+    ORDER BY t.name ASC
     `
 
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.db.Query(ctx, query, userID, department)
 	if err != nil {
 		return nil, fmt.Errorf("tag repo get all: %w", err)
 	}
@@ -192,9 +207,14 @@ func (r *TagRepository) Detach(
 
 	return nil
 }
+// GetDocumentsByTag is scoped the same as GetAll — otherwise a user who
+// learns a tag's ID from one of their own visible documents could use it to
+// enumerate every document (any owner, any department) sharing that tag.
 func (r *TagRepository) GetDocumentsByTag(
 	ctx context.Context,
 	tagID string,
+	userID string,
+	department *string,
 ) ([]models.DocumentWithOwner, error) {
 
 	query := `
@@ -204,11 +224,14 @@ func (r *TagRepository) GetDocumentsByTag(
     FROM documents d
     JOIN document_tags dt ON dt.document_id = d.id
     JOIN users u ON u.id = d.owner_id
-    WHERE dt.tag_id = $1 AND d.deleted_at IS NULL
+    WHERE dt.tag_id = $1 AND d.deleted_at IS NULL AND (
+      d.owner_id = $2
+      OR ($3::text IS NOT NULL AND d.department = $3)
+    )
     ORDER BY d.created_at DESC
     `
 
-	rows, err := r.db.Query(ctx, query, tagID)
+	rows, err := r.db.Query(ctx, query, tagID, userID, department)
 	if err != nil {
 		return nil, fmt.Errorf("tag repo get documents by tag: %w", err)
 	}

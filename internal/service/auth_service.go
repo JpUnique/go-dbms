@@ -390,6 +390,15 @@ func (s *AuthService) ResetPasswordViaTwoFactor(
 		return utils.ErrInvalidCredentials
 	}
 
+	// Self-service reset is admin-only — a regular user's password can only
+	// be reset by an admin (POST /users/:id/reset-password). Returns the
+	// same generic error as every other failure path here (wrong code,
+	// unknown username) so this can't be used to enumerate which accounts
+	// are admin vs not.
+	if user.Role != "admin" {
+		return utils.ErrInvalidCredentials
+	}
+
 	twoFactor, err := s.userRepo.GetTwoFactor(ctx, user.ID)
 	if err != nil || twoFactor == nil || !twoFactor.Verified {
 		return utils.ErrInvalidCredentials

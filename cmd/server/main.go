@@ -101,7 +101,7 @@ func main() {
 	folderService := service.NewFolderService(folderRepo)
 	notificationService := service.NewNotificationService(notificationRepo)
 	shareService := service.NewShareService(shareRepo, documentRepo, notificationService)
-	tagService := service.NewTagService(tagRepo, documentRepo)
+	tagService := service.NewTagService(tagRepo, documentRepo, userRepo)
 	statsService := service.NewStatsService(statsRepo)
 	bulkService := service.NewBulkService(bulkRepo, folderRepo)
 	trashService := service.NewTrashService(trashRepo)

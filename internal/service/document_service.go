@@ -19,25 +19,10 @@ func NewDocumentService(repo *repository.DocumentRepository, userRepo *repositor
 	return &DocumentService{repo: repo, userRepo: userRepo}
 }
 
-// resolveScope turns a JWT role into the (isAdmin, department) pair the repo
-// layer needs: admins bypass department scoping entirely (department stays
-// nil, isAdmin does the work); everyone else gets their own department
-// looked up so they can be widened to "own uploads OR same department".
-// department stays nil if the user simply has none set.
+// resolveScope delegates to the shared resolveDeptScope (see scope.go) —
+// kept as a method for a minimal diff at every existing call site below.
 func (s *DocumentService) resolveScope(ctx context.Context, userID, role string) (isAdmin bool, department *string, err error) {
-	if role == "admin" {
-		return true, nil, nil
-	}
-
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return false, nil, fmt.Errorf("document service resolve scope: %w", err)
-	}
-	if user == nil || user.Department == nil || *user.Department == "" {
-		return false, nil, nil
-	}
-
-	return false, user.Department, nil
+	return resolveDeptScope(ctx, s.userRepo, userID, role)
 }
 
 // ==============================
@@ -88,6 +73,14 @@ func (s *DocumentService) Upload(
 	}
 	if meta.Department != "" {
 		doc.Department = &meta.Department
+	} else {
+		// The upload form doesn't collect a department — default to the
+		// uploader's own profile department so it's actually discoverable
+		// via department-scoped visibility and the admin Departments page,
+		// instead of silently landing with no department at all.
+		if uploader, err := s.userRepo.GetByID(ctx, userID); err == nil && uploader != nil && uploader.Department != nil && *uploader.Department != "" {
+			doc.Department = uploader.Department
+		}
 	}
 
 	if err := s.repo.Create(ctx, doc); err != nil {

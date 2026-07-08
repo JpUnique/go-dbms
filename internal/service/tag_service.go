@@ -12,16 +12,23 @@ import (
 type TagService struct {
 	repo         *repository.TagRepository
 	documentRepo *repository.DocumentRepository
+	userRepo     *repository.UserRepository
 }
 
-func NewTagService(repo *repository.TagRepository, docRepo *repository.DocumentRepository) *TagService {
+func NewTagService(repo *repository.TagRepository, docRepo *repository.DocumentRepository, userRepo *repository.UserRepository) *TagService {
 	return &TagService{
 		repo:         repo,
 		documentRepo: docRepo,
+		userRepo:     userRepo,
 	}
 }
-func (s *TagService) GetAll(ctx context.Context) ([]models.Tag, error) {
-	return s.repo.GetAll(ctx)
+
+func (s *TagService) GetAll(ctx context.Context, userID, role string) ([]models.Tag, error) {
+	_, department, err := resolveDeptScope(ctx, s.userRepo, userID, role)
+	if err != nil {
+		return nil, fmt.Errorf("tag service get all: %w", err)
+	}
+	return s.repo.GetAll(ctx, userID, department)
 }
 
 func (s *TagService) Create(ctx context.Context, name string, color string) (*models.Tag, error) {
@@ -57,8 +64,12 @@ func (s *TagService) Detach(ctx context.Context, docID, tagID, userID string) er
 	return s.repo.Detach(ctx, docID, tagID)
 }
 
-func (s *TagService) GetDocumentsByTag(ctx context.Context, tagID string) ([]models.DocumentWithOwner, error) {
-	return s.repo.GetDocumentsByTag(ctx, tagID)
+func (s *TagService) GetDocumentsByTag(ctx context.Context, tagID, userID, role string) ([]models.DocumentWithOwner, error) {
+	_, department, err := resolveDeptScope(ctx, s.userRepo, userID, role)
+	if err != nil {
+		return nil, fmt.Errorf("tag service get documents by tag: %w", err)
+	}
+	return s.repo.GetDocumentsByTag(ctx, tagID, userID, department)
 }
 
 func (s *TagService) GetByDocument(
