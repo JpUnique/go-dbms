@@ -194,6 +194,39 @@ first place to check — there's no wildcard, every origin must be
 listed explicitly.
 
 
+2026-07-08 — ROLE-BASED ACCESS RESTORED + DEPARTMENTS FEATURE
+----------------------------------------------------------------------
+Admin vs regular-user access control had been fully built already, just
+switched off repo-wide behind "TEMP-NO-ROLES" markers (grep for it —
+should return nothing now). Restored all of it, plus added: non-admins
+now see their whole department's documents (not just their own —
+still full access short of delete), a new admin-only Departments page
+(nav > Admin > Departments) for cross-department browsing, an
+"Indexing" nav entry (links to the existing /search page), and
+registration now collects + persists department.
+
+Confirmed the two existing admin accounts (alexmichael034@gmail.com,
+cherechi.okparaugo@petrodata.net) still have role='admin' after
+deploy — nobody got logged out, this only gates what already-issued
+JWTs' role claim allows.
+
+New migration: idx_documents_department (plain blocking CREATE INDEX —
+schema.sql runs in one transaction so CONCURRENTLY isn't available;
+fine at current data volume, but if the documents table grows large,
+build that index manually out-of-band before relying on RUN_MIGRATION).
+
+Verified with real registered test accounts across two departments,
+both locally (fresh Postgres) and against this live server directly
+(register -> upload -> cross-account visibility -> full-access edit ->
+delete correctly refused -> admin-only routes correctly 403 for
+non-admins) — test accounts deleted afterward, cascaded cleanly with
+no orphaned documents.
+
+Deployed the same way as before: push, pull on server, docker compose
+build --no-cache backend, up -d --force-recreate backend; frontend via
+git pull, pnpm build, kill :3000 by port, nohup vite preview.
+
+
 2026-07-07 — LOGIN FAILED WITH "invalid credentials" FOR REAL ACCOUNTS
 ----------------------------------------------------------------------
 Symptom: user registered fine (account exists in Postgres, confirmed
