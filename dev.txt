@@ -227,7 +227,46 @@ build --no-cache backend, up -d --force-recreate backend; frontend via
 git pull, pnpm build, kill :3000 by port, nohup vite preview.
 
 
-2026-07-07 — LOGIN FAILED WITH "invalid credentials" FOR REAL ACCOUNTS
+2026-07-08 — UPLOAD DEPARTMENT BUG + PASSWORD POLICY + REPORTS/TAGS FIXES
+----------------------------------------------------------------------
+Follow-up round after the RBAC/Departments feature above, same day:
+
+- Real bug: the upload form never sent a department field at all, so
+  every uploaded document landed with department=NULL — invisible to
+  the department-scoped visibility and the Departments page, even
+  though the uploader clearly had a department set on their own
+  profile. Fixed in DocumentService.Upload: defaults to the uploader's
+  own profile department when the form doesn't supply one. If you see
+  a document that "should" be in a department but isn't showing up
+  anywhere, check whether it predates this fix (department column
+  genuinely NULL) — there's no backfill for pre-existing rows.
+
+- New policy: regular (non-admin) users can no longer change their own
+  password or use the forgot-password/2FA-recovery reset — only an
+  admin can reset a user's password now (POST /users/:id/reset-password,
+  already existed). Admins keep full self-service for their own
+  account. The reset-password endpoint's failure path was already
+  designed to return one indistinguishable generic error for unknown
+  username / wrong code — adding the non-admin check reuses that exact
+  same error, verified byte-identical across all three cases so this
+  doesn't newly leak which accounts are admin.
+
+- Reverted an over-restriction from earlier the same day: /reports had
+  been made fully admin-only, but it was always meant to let every user
+  pull their own activity report (scope=own) — only scope=all (every
+  user's activity) is supposed to be admin-gated. If a similar
+  "should this whole route really be admin-only, or just one query
+  param on it" question comes up again, check the handler for an
+  existing own-vs-all/scope split before gating the whole route.
+
+- Tags were completely unscoped (global, no owner/department at all) —
+  any tag any user created showed up in every other user's (including
+  admin's) own sidebar. Now scoped the same as documents: GetAll and
+  GetDocumentsByTag only return tags/docs the caller can actually see.
+
+Deployed and verified the same way as the RBAC feature above — real
+registered test accounts, register/upload/permission checks against
+this live server directly, test data deleted after.
 ----------------------------------------------------------------------
 Symptom: user registered fine (account exists in Postgres, confirmed
 via psql), got the right password, but every login attempt returned
