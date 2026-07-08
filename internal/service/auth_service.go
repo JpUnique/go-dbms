@@ -39,6 +39,7 @@ func NewAuthService(
 func (s *AuthService) Register(
 	ctx context.Context,
 	email, password, name string,
+	department *string,
 ) (user *models.User, challenge string, qrCode string, err error) {
 
 	// normalize email (important)
@@ -66,6 +67,7 @@ func (s *AuthService) Register(
 		Name:         name,
 		Role:         "viewer",
 		Status:       "active",
+		Department:   department,
 	}
 
 	//  insert user

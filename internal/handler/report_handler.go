@@ -17,21 +17,18 @@ func NewReportHandler(service *service.ReportService) *ReportHandler {
 }
 
 // Get — GET /reports?period=today|yesterday|week|month&scope=own|all
-// (defaults to today, own). Every user generates their own report by
-// default; scope=all is the system-wide, all-users view.
-//
-// TEMP-NO-ROLES: scope=all should be admin-only — restore the block below
-// once role-based access is reintroduced.
+// (defaults to today, own). The whole /reports group is admin-only (see
+// report_routes.go); scope=all is the system-wide, all-users view within
+// that, scope=own lets an admin scope the report to just themselves.
 func (h *ReportHandler) Get(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
 
-	// TEMP-NO-ROLES: was
-	// role, _ := c.Get("role")
-	// if c.Query("scope") == "all" && role.(string) != "admin" {
-	// 	utils.Error(c, http.StatusForbidden, "admin only")
-	// 	return
-	// }
+	role, _ := c.Get("role")
+	if c.Query("scope") == "all" && role.(string) != "admin" {
+		utils.Error(c, http.StatusForbidden, "admin only")
+		return
+	}
 
 	period := c.Query("period")
 	allUsers := c.Query("scope") == "all"

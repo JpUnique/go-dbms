@@ -11,11 +11,33 @@ import (
 )
 
 type DocumentService struct {
-	repo *repository.DocumentRepository
+	repo     *repository.DocumentRepository
+	userRepo *repository.UserRepository
 }
 
-func NewDocumentService(repo *repository.DocumentRepository) *DocumentService {
-	return &DocumentService{repo: repo}
+func NewDocumentService(repo *repository.DocumentRepository, userRepo *repository.UserRepository) *DocumentService {
+	return &DocumentService{repo: repo, userRepo: userRepo}
+}
+
+// resolveScope turns a JWT role into the (isAdmin, department) pair the repo
+// layer needs: admins bypass department scoping entirely (department stays
+// nil, isAdmin does the work); everyone else gets their own department
+// looked up so they can be widened to "own uploads OR same department".
+// department stays nil if the user simply has none set.
+func (s *DocumentService) resolveScope(ctx context.Context, userID, role string) (isAdmin bool, department *string, err error) {
+	if role == "admin" {
+		return true, nil, nil
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return false, nil, fmt.Errorf("document service resolve scope: %w", err)
+	}
+	if user == nil || user.Department == nil || *user.Department == "" {
+		return false, nil, nil
+	}
+
+	return false, user.Department, nil
 }
 
 // ==============================
@@ -99,9 +121,15 @@ func (s *DocumentService) GetByID(
 	ctx context.Context,
 	docID string,
 	userID string,
+	role string,
 ) (*models.Document, error) {
 
-	doc, err := s.repo.GetByID(ctx, docID, userID)
+	isAdmin, department, err := s.resolveScope(ctx, userID, role)
+	if err != nil {
+		return nil, fmt.Errorf("document service get by id: %w", err)
+	}
+
+	doc, err := s.repo.GetByID(ctx, docID, userID, isAdmin, department)
 	if err != nil {
 		return nil, fmt.Errorf("document service get by id: %w", err)
 	}
@@ -120,9 +148,15 @@ func (s *DocumentService) GetDownloadURL(
 	ctx context.Context,
 	docID string,
 	userID string,
+	role string,
 ) (string, string, error) {
 
-	doc, err := s.repo.GetByIDForDownload(ctx, docID, userID)
+	isAdmin, department, err := s.resolveScope(ctx, userID, role)
+	if err != nil {
+		return "", "", fmt.Errorf("document service download: %w", err)
+	}
+
+	doc, err := s.repo.GetByIDForDownload(ctx, docID, userID, isAdmin, department)
 	if err != nil {
 		return "", "", fmt.Errorf("document service download: %w", err)
 	}
@@ -148,16 +182,24 @@ func (s *DocumentService) Update(
 	ctx context.Context,
 	docID string,
 	userID string,
+	role string,
 	title *string,
 	status *string,
 	isStarred *bool,
 	folderID **string,
 ) (*models.Document, error) {
 
+	isAdmin, department, err := s.resolveScope(ctx, userID, role)
+	if err != nil {
+		return nil, fmt.Errorf("document service update: %w", err)
+	}
+
 	doc, err := s.repo.Update(
 		ctx,
 		docID,
 		userID,
+		isAdmin,
+		department,
 		title,
 		status,
 		isStarred,
@@ -184,9 +226,10 @@ func (s *DocumentService) Delete(
 	ctx context.Context,
 	docID string,
 	userID string,
+	role string,
 ) error {
 
-	doc, err := s.repo.Delete(ctx, docID, userID)
+	doc, err := s.repo.Delete(ctx, docID, userID, role == "admin")
 	if err != nil {
 		return fmt.Errorf("document service delete: %w", err)
 	}
@@ -205,9 +248,15 @@ func (s *DocumentService) ToggleStar(
 	ctx context.Context,
 	docID string,
 	userID string,
+	role string,
 ) (bool, error) {
 
-	isStarred, err := s.repo.ToggleStar(ctx, docID, userID)
+	isAdmin, department, err := s.resolveScope(ctx, userID, role)
+	if err != nil {
+		return false, fmt.Errorf("document service toggle star: %w", err)
+	}
+
+	isStarred, err := s.repo.ToggleStar(ctx, docID, userID, isAdmin, department)
 	if err != nil {
 		return false, fmt.Errorf("document service toggle star: %w", err)
 	}
@@ -218,13 +267,54 @@ func (s *DocumentService) ToggleStar(
 func (s *DocumentService) GetAllByFilter(
 	ctx context.Context,
 	userID string,
+	role string,
 	query models.DocumentQuery,
 ) ([]models.DocumentWithMeta, int, error) {
 
-	docs, total, err := s.repo.GetByUserWithFilter(ctx, userID, query)
+	_, department, err := s.resolveScope(ctx, userID, role)
+	if err != nil {
+		return nil, 0, fmt.Errorf("document service get all: %w", err)
+	}
+
+	docs, total, err := s.repo.GetByUserWithFilter(ctx, userID, department, query)
 	if err != nil {
 		return nil, 0, fmt.Errorf("document service get all: %w", err)
 	}
 
 	return docs, total, nil
+}
+
+// ==============================
+// ADMIN: BROWSE DOCUMENTS BY DEPARTMENT
+// ==============================
+func (s *DocumentService) GetByDepartment(
+	ctx context.Context,
+	department string,
+	page, limit int,
+) ([]models.DocumentWithMeta, int, error) {
+
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 200 {
+		limit = 200
+	}
+
+	docs, total, err := s.repo.GetByDepartment(ctx, department, page, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("document service get by department: %w", err)
+	}
+
+	return docs, total, nil
+}
+
+// CountByDepartment powers the Departments admin page's stat cards.
+func (s *DocumentService) CountByDepartment(ctx context.Context) (map[string]int, error) {
+	counts, err := s.repo.CountByDepartment(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("document service count by department: %w", err)
+	}
+	return counts, nil
 }

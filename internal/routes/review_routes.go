@@ -11,8 +11,8 @@ func RegisterReviewRoutes(router *gin.RouterGroup, h *handler.ReviewHandler) {
 	doc := router.Group("/documents/:id")
 	doc.Use(middleware.AuthMiddleware())
 	doc.POST("/submit-review", h.Submit)
-	doc.POST("/approve", h.Approve)
-	doc.POST("/reject", h.Reject)
+	doc.POST("/approve", middleware.AdminOnly(), h.Approve)
+	doc.POST("/reject", middleware.AdminOnly(), h.Reject)
 	doc.GET("/reviews", h.GetByDocument)
 
 	// Admin review queue

@@ -69,7 +69,7 @@ func (h *CommentHandler) Create(c *gin.Context) {
 }
 
 func (h *CommentHandler) fireCommentNotifications(ctx context.Context, docID, commenterID, commenterName, content string) {
-	doc, err := h.docSvc.GetByID(ctx, docID, commenterID)
+	doc, err := h.docSvc.GetByID(ctx, docID, commenterID, "")
 	if err != nil || doc == nil {
 		return
 	}

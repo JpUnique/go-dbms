@@ -39,7 +39,7 @@ func (s *TagService) Delete(ctx context.Context, id string) error {
 
 func (s *TagService) Attach(ctx context.Context, docID, tagID, userID string) error {
 
-	doc, err := s.documentRepo.GetByID(ctx, docID, userID)
+	doc, err := s.documentRepo.GetByID(ctx, docID, userID, false, nil)
 	if err != nil || doc == nil {
 		return fmt.Errorf("not owner")
 	}
@@ -49,7 +49,7 @@ func (s *TagService) Attach(ctx context.Context, docID, tagID, userID string) er
 
 func (s *TagService) Detach(ctx context.Context, docID, tagID, userID string) error {
 
-	doc, err := s.documentRepo.GetByID(ctx, docID, userID)
+	doc, err := s.documentRepo.GetByID(ctx, docID, userID, false, nil)
 	if err != nil || doc == nil {
 		return fmt.Errorf("not owner")
 	}
@@ -68,7 +68,7 @@ func (s *TagService) GetByDocument(
 ) ([]models.Tag, error) {
 
 	//  verify document ownership
-	doc, err := s.documentRepo.GetByID(ctx, docID, userID)
+	doc, err := s.documentRepo.GetByID(ctx, docID, userID, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("tag service get document: %w", err)
 	}

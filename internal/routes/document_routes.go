@@ -24,6 +24,12 @@ func RegisterDocumentRoutes(
 
 	docs.POST("", documentHandler.Upload)
 	docs.GET("", documentHandler.GetAllByFilter)
+
+	// Admin-only cross-department browsing — registered before "/:id" so the
+	// literal "by-department"/"department-counts" segments match first.
+	docs.GET("/by-department", middleware.AdminOnly(), documentHandler.GetByDepartment)
+	docs.GET("/department-counts", middleware.AdminOnly(), documentHandler.CountByDepartment)
+
 	docs.GET("/:id", documentHandler.GetOne)
 	docs.GET("/:id/download", documentHandler.Download)
 	docs.PATCH("/:id", documentHandler.Update)

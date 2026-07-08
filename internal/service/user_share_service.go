@@ -36,7 +36,7 @@ func NewUserShareService(
 // ownership must be checked explicitly here rather than treating "found" as
 // "owns it" — only the owner may grant/revoke/list who a document is shared with.
 func (s *UserShareService) requireOwner(ctx context.Context, docID, callerID string) (*models.Document, error) {
-	doc, err := s.documentRepo.GetByID(ctx, docID, callerID)
+	doc, err := s.documentRepo.GetByID(ctx, docID, callerID, false, nil)
 	if err != nil {
 		return nil, fmt.Errorf("user share service: get document: %w", err)
 	}

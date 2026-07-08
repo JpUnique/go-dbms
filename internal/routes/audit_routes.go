@@ -9,7 +9,7 @@ import (
 func RegisterAuditRoutes(router *gin.RouterGroup, handler *handler.AuditHandler) {
 
 	group := router.Group("/audit")
-	group.Use(middleware.AuthMiddleware())
+	group.Use(middleware.AuthMiddleware(), middleware.AdminOnly())
 
 	group.GET("", handler.GetAll)
 	group.DELETE("", handler.Delete)

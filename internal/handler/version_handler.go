@@ -55,10 +55,12 @@ func (h *DocumentVersionHandler) GetVersions(c *gin.Context) {
 		return
 	}
 
+	role, _ := c.Get("role")
 	versions, err := h.service.GetVersions(
 		c.Request.Context(),
 		docID,
 		userID,
+		role.(string),
 	)
 
 	if err != nil {
@@ -108,10 +110,12 @@ func (h *DocumentVersionHandler) UploadVersion(c *gin.Context) {
 
 	changeNote := c.PostForm("change_note")
 
+	role, _ := c.Get("role")
 	version, err := h.service.UploadVersion(
 		c.Request.Context(),
 		docID,
 		userID,
+		role.(string),
 		username,
 		buffer,
 		fileHeader.Filename,
@@ -150,11 +154,13 @@ func (h *DocumentVersionHandler) DownloadVersion(c *gin.Context) {
 		return
 	}
 
+	role, _ := c.Get("role")
 	url, fileName, err := h.service.DownloadVersion(
 		c.Request.Context(),
 		docID,
 		versionID,
 		userID,
+		role.(string),
 	)
 
 	if err != nil {

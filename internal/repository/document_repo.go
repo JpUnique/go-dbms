@@ -118,14 +118,18 @@ func (r *DocumentRepository) GetByUser(
 	return docs, nil
 }
 
-// GetByID returns the document if userID owns it OR has been directly
-// shared it (any permission level) — callers that require true ownership
-// (e.g. granting/revoking shares, deleting) must additionally compare
-// doc.OwnerID == userID themselves.
+// GetByID returns the document if userID owns it, has been directly shared
+// it (any permission level), is an admin, or shares the document's
+// department — callers that require true ownership (e.g. granting/revoking
+// shares, deleting) must additionally compare doc.OwnerID == userID
+// themselves. department is nil for admins (isAdmin already bypasses) and
+// for non-admins with no department set.
 func (r *DocumentRepository) GetByID(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) (*models.Document, error) {
 
 	query := `
@@ -135,6 +139,8 @@ func (r *DocumentRepository) GetByID(
     FROM documents
     WHERE id = $1 AND (
       owner_id = $2
+      OR $3
+      OR ($4::text IS NOT NULL AND department = $4)
       OR EXISTS (
         SELECT 1 FROM document_user_shares
         WHERE document_id = documents.id AND user_id = $2
@@ -144,7 +150,7 @@ func (r *DocumentRepository) GetByID(
 
 	doc := &models.Document{}
 
-	err := r.db.QueryRow(ctx, query, docID, userID).Scan(
+	err := r.db.QueryRow(ctx, query, docID, userID, isAdmin, department).Scan(
 		&doc.ID,
 		&doc.Title,
 		&doc.FileName,
@@ -171,11 +177,14 @@ func (r *DocumentRepository) GetByID(
 
 // GetByIDForDownload is like GetByID, but a share only grants access here
 // if its permission is specifically "download" — a "view"-only share must
-// not be able to download the file.
+// not be able to download the file. Admins and same-department users get
+// full download access, same as GetByID.
 func (r *DocumentRepository) GetByIDForDownload(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) (*models.Document, error) {
 
 	query := `
@@ -185,6 +194,8 @@ func (r *DocumentRepository) GetByIDForDownload(
     FROM documents
     WHERE id = $1 AND (
       owner_id = $2
+      OR $3
+      OR ($4::text IS NOT NULL AND department = $4)
       OR EXISTS (
         SELECT 1 FROM document_user_shares
         WHERE document_id = documents.id AND user_id = $2 AND permission = 'download'
@@ -194,7 +205,7 @@ func (r *DocumentRepository) GetByIDForDownload(
 
 	doc := &models.Document{}
 
-	err := r.db.QueryRow(ctx, query, docID, userID).Scan(
+	err := r.db.QueryRow(ctx, query, docID, userID, isAdmin, department).Scan(
 		&doc.ID,
 		&doc.Title,
 		&doc.FileName,
@@ -223,6 +234,8 @@ func (r *DocumentRepository) Update(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 	title *string,
 	status *string,
 	isStarred *bool,
@@ -237,7 +250,11 @@ func (r *DocumentRepository) Update(
         is_starred = COALESCE($3, is_starred),
         folder_id  = CASE WHEN $4 THEN $5 ELSE folder_id END,
         updated_at = NOW()
-    WHERE id = $6 AND owner_id = $7
+    WHERE id = $6 AND (
+      owner_id = $7
+      OR $8
+      OR ($9::text IS NOT NULL AND department = $9)
+    )
     RETURNING id, title, file_name, file_key, file_type, file_size,
               folder_id, owner_id, status, version, is_starred,
               created_at, updated_at
@@ -259,6 +276,8 @@ func (r *DocumentRepository) Update(
 		newFolderID,
 		docID,
 		userID,
+		isAdmin,
+		department,
 	).Scan(
 		&doc.ID,
 		&doc.Title,
@@ -302,23 +321,26 @@ func (r *DocumentRepository) UpdateStatus(ctx context.Context, docID, _ string, 
 
 // Delete moves a document to Trash (status = 'archived') — it does not
 // remove the row or the underlying file. Permanent removal only happens via
-// TrashRepository.Delete/Empty once the user empties the trash.
+// TrashRepository.Delete/Empty once the user empties the trash. Deliberately
+// owner-or-admin only — unlike view/edit/star, department-mates do NOT get
+// delete access to each other's documents (destructive + irreversible).
 func (r *DocumentRepository) Delete(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
 ) (*models.Document, error) {
 
 	query := `
     UPDATE documents
     SET status = 'archived'
-    WHERE id = $1 AND owner_id = $2 AND status != 'archived'
+    WHERE id = $1 AND (owner_id = $2 OR $3) AND status != 'archived'
     RETURNING id, file_key
     `
 
 	doc := &models.Document{}
 
-	err := r.db.QueryRow(ctx, query, docID, userID).
+	err := r.db.QueryRow(ctx, query, docID, userID, isAdmin).
 		Scan(&doc.ID, &doc.FileKey)
 
 	if err != nil {
@@ -335,18 +357,24 @@ func (r *DocumentRepository) ToggleStar(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) (bool, error) {
 
 	query := `
     UPDATE documents
     SET is_starred = NOT is_starred
-    WHERE id = $1 AND owner_id = $2
+    WHERE id = $1 AND (
+      owner_id = $2
+      OR $3
+      OR ($4::text IS NOT NULL AND department = $4)
+    )
     RETURNING is_starred
     `
 
 	var isStarred bool
 
-	err := r.db.QueryRow(ctx, query, docID, userID).
+	err := r.db.QueryRow(ctx, query, docID, userID, isAdmin, department).
 		Scan(&isStarred)
 
 	if err != nil {
@@ -399,20 +427,39 @@ func (r *DocumentRepository) UpdateLatestVersion(
 	return nil
 }
 
+// GetByUserWithFilter lists the caller's own documents. For non-admins with
+// a department set, this is widened to also include every document in that
+// same department (not just their own uploads) — admins are unchanged here
+// (still their own uploads only; cross-department browsing for admins is
+// served by the separate GetByDepartment, not by widening this query).
 func (r *DocumentRepository) GetByUserWithFilter(
 	ctx context.Context,
 	userID string,
+	department *string,
 	query models.DocumentQuery,
 ) ([]models.DocumentWithMeta, int, error) {
 
-	conditions := []string{"d.owner_id = $1", "d.status != 'archived'"}
+	ownerCondition := "d.owner_id = $1"
 	args := []interface{}{userID}
 	argIndex := 2
 
-	// SEARCH
+	if department != nil {
+		ownerCondition = fmt.Sprintf("(d.owner_id = $1 OR d.department = $%d)", argIndex)
+		args = append(args, *department)
+		argIndex++
+	}
+
+	conditions := []string{ownerCondition, "d.status != 'archived'"}
+
+	// SEARCH — matches title, file name, or any attached tag's name so
+	// "Indexing" search covers keywords, tags, and (substring) full-text.
 	if query.Search != "" {
-		conditions = append(conditions,
-			fmt.Sprintf("(d.title ILIKE $%d OR d.file_name ILIKE $%d)", argIndex, argIndex))
+		conditions = append(conditions, fmt.Sprintf(
+			`(d.title ILIKE $%d OR d.file_name ILIKE $%d OR EXISTS (
+        SELECT 1 FROM document_tags dt
+        JOIN tags t ON t.id = dt.tag_id
+        WHERE dt.document_id = d.id AND t.name ILIKE $%d
+      ))`, argIndex, argIndex, argIndex))
 		args = append(args, "%"+query.Search+"%")
 		argIndex++
 	}
@@ -492,4 +539,92 @@ func (r *DocumentRepository) GetByUserWithFilter(
 	}
 
 	return docs, total, nil
+}
+
+// GetByDepartment lists every document tagged with the given department,
+// regardless of uploader — admin-only (the caller enforces that via
+// middleware). Mirrors GetByUserWithFilter's shape/conventions (same
+// status != 'archived' filter, same owner/folder joins) but with no
+// owner_id restriction at all.
+func (r *DocumentRepository) GetByDepartment(
+	ctx context.Context,
+	department string,
+	page, limit int,
+) ([]models.DocumentWithMeta, int, error) {
+
+	countQuery := `SELECT count(*) FROM documents d WHERE d.department = $1 AND d.status != 'archived'`
+
+	var total int
+	if err := r.db.QueryRow(ctx, countQuery, department).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("document repo count by department: %w", err)
+	}
+
+	offset := (page - 1) * limit
+
+	queryStr := `
+    SELECT d.id, d.title, d.description, d.file_name, d.file_key, d.file_type, d.file_size,
+           d.folder_id, d.owner_id, d.department, d.status, d.version, d.is_starred,
+           d.last_accessed, d.created_at, d.updated_at,
+           u.name  AS owner_name,
+           f.name  AS folder_name
+    FROM documents d
+    LEFT JOIN users   u ON u.id = d.owner_id
+    LEFT JOIN folders f ON f.id = d.folder_id
+    WHERE d.department = $1 AND d.status != 'archived'
+    ORDER BY d.updated_at DESC
+    LIMIT $2 OFFSET $3
+    `
+
+	rows, err := r.db.Query(ctx, queryStr, department, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("document repo query by department: %w", err)
+	}
+	defer rows.Close()
+
+	docs := make([]models.DocumentWithMeta, 0)
+
+	for rows.Next() {
+		var d models.DocumentWithMeta
+		err := rows.Scan(
+			&d.ID, &d.Title, &d.Description, &d.FileName, &d.FileKey, &d.FileType, &d.FileSize,
+			&d.FolderID, &d.OwnerID, &d.Department, &d.Status, &d.Version, &d.IsStarred,
+			&d.LastAccess, &d.CreatedAt, &d.UpdatedAt,
+			&d.OwnerName, &d.FolderName,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("document repo scan by department: %w", err)
+		}
+		docs = append(docs, d)
+	}
+
+	return docs, total, nil
+}
+
+// CountByDepartment returns a document count per department, for the
+// Departments page's stat cards. Mirrors the `by_department` shape already
+// computed inline inside StatsRepository.GetDashboard.
+func (r *DocumentRepository) CountByDepartment(ctx context.Context) (map[string]int, error) {
+
+	rows, err := r.db.Query(ctx, `
+    SELECT COALESCE(department, 'Unknown') AS dept, COUNT(*)
+    FROM documents
+    WHERE status != 'archived'
+    GROUP BY dept
+    `)
+	if err != nil {
+		return nil, fmt.Errorf("document repo count by department: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var dept string
+		var count int
+		if err := rows.Scan(&dept, &count); err != nil {
+			return nil, fmt.Errorf("document repo count by department scan: %w", err)
+		}
+		counts[dept] = count
+	}
+
+	return counts, rows.Err()
 }

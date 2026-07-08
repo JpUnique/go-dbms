@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/JpUnique/go-dbms/internal/models"
@@ -140,9 +141,10 @@ func (h *DocumentHandler) GetAll(c *gin.Context) {
 func (h *DocumentHandler) GetOne(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
 	docID := c.Param("id")
 
-	doc, err := h.service.GetByID(c.Request.Context(), docID, userID.(string))
+	doc, err := h.service.GetByID(c.Request.Context(), docID, userID.(string), role.(string))
 	if err != nil {
 
 		if err == utils.ErrNotFound {
@@ -164,10 +166,11 @@ func (h *DocumentHandler) GetOne(c *gin.Context) {
 func (h *DocumentHandler) Download(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
 	docID := c.Param("id")
 
 	url, fileName, err :=
-		h.service.GetDownloadURL(c.Request.Context(), docID, userID.(string))
+		h.service.GetDownloadURL(c.Request.Context(), docID, userID.(string), role.(string))
 
 	if err != nil {
 		utils.Error(c, http.StatusNotFound, "document not found")
@@ -199,7 +202,7 @@ func (h *DocumentHandler) Stream(c *gin.Context) {
 	}
 
 	docID := c.Param("id")
-	doc, err := h.service.GetByID(c.Request.Context(), docID, claims.UserID)
+	doc, err := h.service.GetByID(c.Request.Context(), docID, claims.UserID, claims.Role)
 	if err != nil {
 		c.Status(http.StatusNotFound)
 		return
@@ -228,6 +231,7 @@ func (h *DocumentHandler) Stream(c *gin.Context) {
 func (h *DocumentHandler) Update(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
 	docID := c.Param("id")
 
 	// Use a raw map so we can distinguish "field absent" from "field = null"
@@ -267,6 +271,7 @@ func (h *DocumentHandler) Update(c *gin.Context) {
 		c.Request.Context(),
 		docID,
 		userID.(string),
+		role.(string),
 		title,
 		status,
 		isStarred,
@@ -294,12 +299,14 @@ func (h *DocumentHandler) Update(c *gin.Context) {
 func (h *DocumentHandler) Delete(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
 	docID := c.Param("id")
 
 	err := h.service.Delete(
 		c.Request.Context(),
 		docID,
 		userID.(string),
+		role.(string),
 	)
 
 	if err != nil {
@@ -323,12 +330,14 @@ func (h *DocumentHandler) Delete(c *gin.Context) {
 func (h *DocumentHandler) ToggleStar(c *gin.Context) {
 
 	userID, _ := c.Get("userId")
+	role, _ := c.Get("role")
 	docID := c.Param("id")
 
 	starred, err := h.service.ToggleStar(
 		c.Request.Context(),
 		docID,
 		userID.(string),
+		role.(string),
 	)
 	if err != nil {
 		utils.Error(c, http.StatusNotFound, "document not found")
@@ -353,6 +362,7 @@ func (h *DocumentHandler) GetAllByFilter(c *gin.Context) {
 		utils.Error(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	role, _ := c.Get("role")
 
 	var query models.DocumentQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
@@ -373,6 +383,7 @@ func (h *DocumentHandler) GetAllByFilter(c *gin.Context) {
 	docs, total, err := h.service.GetAllByFilter(
 		c.Request.Context(),
 		userID.(string),
+		role.(string),
 		query,
 	)
 
@@ -389,4 +400,52 @@ func (h *DocumentHandler) GetAllByFilter(c *gin.Context) {
 			"total": total,
 		},
 	})
+}
+
+// ==============================
+// ADMIN: BROWSE DOCUMENTS BY DEPARTMENT
+// ==============================
+// Admin-only (enforced by middleware.AdminOnly() at the route), so unlike
+// GetAllByFilter this deliberately ignores the caller's own department and
+// owner_id entirely — it lists every document tagged with the requested
+// department, across every uploader.
+func (h *DocumentHandler) GetByDepartment(c *gin.Context) {
+
+	department := c.Query("department")
+	if department == "" {
+		utils.Error(c, http.StatusBadRequest, "department is required")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	docs, total, err := h.service.GetByDepartment(c.Request.Context(), department, page, limit)
+	if err != nil {
+		utils.Error(c, http.StatusInternalServerError, "failed to fetch documents")
+		return
+	}
+
+	utils.Success(c, gin.H{
+		"documents": docs,
+		"meta": gin.H{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+		},
+	})
+}
+
+// ==============================
+// ADMIN: DOCUMENT COUNTS PER DEPARTMENT
+// ==============================
+func (h *DocumentHandler) CountByDepartment(c *gin.Context) {
+
+	counts, err := h.service.CountByDepartment(c.Request.Context())
+	if err != nil {
+		utils.Error(c, http.StatusInternalServerError, "failed to fetch department counts")
+		return
+	}
+
+	utils.Success(c, gin.H{"counts": counts})
 }

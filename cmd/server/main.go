@@ -96,8 +96,8 @@ func main() {
 	// SERVICES
 	// =========================
 	authService := service.NewAuthService(userRepo, refreshRepo, recoveryCodeRepo)
-	documentService := service.NewDocumentService(documentRepo)
-	versionService := service.NewDocumentVersionService(versionRepo, documentRepo)
+	documentService := service.NewDocumentService(documentRepo, userRepo)
+	versionService := service.NewDocumentVersionService(versionRepo, documentRepo, userRepo)
 	folderService := service.NewFolderService(folderRepo)
 	notificationService := service.NewNotificationService(notificationRepo)
 	shareService := service.NewShareService(shareRepo, documentRepo, notificationService)

@@ -176,6 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_owner_status ON documents(owner_id, status);
 CREATE INDEX IF NOT EXISTS idx_documents_updated ON documents(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_documents_department ON documents(department);
 
 CREATE INDEX IF NOT EXISTS idx_documents_search
 ON documents USING gin (

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/JpUnique/go-dbms/internal/service"
 	"github.com/JpUnique/go-dbms/internal/utils"
@@ -63,11 +64,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	if req.Department == nil || strings.TrimSpace(*req.Department) == "" {
+		utils.Error(c, http.StatusBadRequest, "department is required")
+		return
+	}
+
 	user, challenge, qrCode, err := h.service.Register(
 		c.Request.Context(),
 		req.Email,
 		req.Password,
 		req.Name,
+		req.Department,
 	)
 	if err != nil {
 

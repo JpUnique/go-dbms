@@ -39,18 +39,24 @@ func (r *DocumentVersionRepository) GetCurrentVersionForUpdate(
 	tx pgx.Tx,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) (int, error) {
 
 	query := `
     SELECT version
     FROM documents
-    WHERE id = $1 AND owner_id = $2
+    WHERE id = $1 AND (
+      owner_id = $2
+      OR $3
+      OR ($4::text IS NOT NULL AND department = $4)
+    )
     FOR UPDATE
     `
 
 	var version int
 
-	err := tx.QueryRow(ctx, query, docID, userID).Scan(&version)
+	err := tx.QueryRow(ctx, query, docID, userID, isAdmin, department).Scan(&version)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -105,6 +111,8 @@ func (r *DocumentVersionRepository) GetByDocument(
 	ctx context.Context,
 	docID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) ([]models.DocumentVersion, error) {
 
 	query := `
@@ -113,11 +121,15 @@ func (r *DocumentVersionRepository) GetByDocument(
         v.file_size, v.uploaded_by, v.change_note, v.created_at
     FROM document_versions v
     JOIN documents d ON v.document_id = d.id
-    WHERE v.document_id = $1 AND d.owner_id = $2
+    WHERE v.document_id = $1 AND (
+      d.owner_id = $2
+      OR $3
+      OR ($4::text IS NOT NULL AND d.department = $4)
+    )
     ORDER BY v.version DESC
     `
 
-	rows, err := r.db.Query(ctx, query, docID, userID)
+	rows, err := r.db.Query(ctx, query, docID, userID, isAdmin, department)
 	if err != nil {
 		return nil, fmt.Errorf("get versions failed: %w", err)
 	}
@@ -159,6 +171,8 @@ func (r *DocumentVersionRepository) GetByID(
 	docID string,
 	versionID string,
 	userID string,
+	isAdmin bool,
+	department *string,
 ) (*models.DocumentVersion, string, string, error) {
 
 	query := `
@@ -169,7 +183,11 @@ func (r *DocumentVersionRepository) GetByID(
     FROM document_versions v
     JOIN documents d ON v.document_id = d.id
     JOIN users u ON d.owner_id = u.id
-    WHERE v.id = $1 AND v.document_id = $2 AND d.owner_id = $3
+    WHERE v.id = $1 AND v.document_id = $2 AND (
+      d.owner_id = $3
+      OR $4
+      OR ($5::text IS NOT NULL AND d.department = $5)
+    )
     `
 
 	var version models.DocumentVersion
@@ -182,6 +200,8 @@ func (r *DocumentVersionRepository) GetByID(
 		versionID,
 		docID,
 		userID,
+		isAdmin,
+		department,
 	).Scan(
 		&version.ID,
 		&version.FileKey,

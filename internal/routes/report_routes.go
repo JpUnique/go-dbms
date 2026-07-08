@@ -12,7 +12,7 @@ func RegisterReportRoutes(
 	reportHandler *handler.ReportHandler,
 ) {
 	reports := router.Group("/reports")
-	reports.Use(middleware.AuthMiddleware())
+	reports.Use(middleware.AuthMiddleware(), middleware.AdminOnly())
 
 	reports.GET("", reportHandler.Get)
 }

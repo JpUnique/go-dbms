@@ -55,11 +55,11 @@ func RegisterAuthRoutes(
 	users.GET("/stats/departments", authHandler.GetDepartmentStats)
 	users.GET("/directory", authHandler.GetDirectory) // workspace member list — any auth'd user
 
-	// user management endpoints
-	users.GET("", authHandler.GetAllUsers)
-	users.POST("", authHandler.AdminCreateUser)
-	users.PATCH("/:id", authHandler.AdminUpdateUser)
-	users.PATCH("/:id/status", authHandler.AdminToggleStatus)
-	users.POST("/:id/reset-password", authHandler.AdminResetPassword)
-	users.DELETE("/:id", authHandler.AdminDeleteUser)
+	// user management endpoints — admin only
+	users.GET("", middleware.AdminOnly(), authHandler.GetAllUsers)
+	users.POST("", middleware.AdminOnly(), authHandler.AdminCreateUser)
+	users.PATCH("/:id", middleware.AdminOnly(), authHandler.AdminUpdateUser)
+	users.PATCH("/:id/status", middleware.AdminOnly(), authHandler.AdminToggleStatus)
+	users.POST("/:id/reset-password", middleware.AdminOnly(), authHandler.AdminResetPassword)
+	users.DELETE("/:id", middleware.AdminOnly(), authHandler.AdminDeleteUser)
 }

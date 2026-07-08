@@ -45,7 +45,7 @@ func (s *ShareService) Create(
 	}
 
 	// ✅ verify ownership (fast check)
-	doc, err := s.documentRepo.GetByID(ctx, docID, userID)
+	doc, err := s.documentRepo.GetByID(ctx, docID, userID, false, nil)
 	if err != nil || doc == nil {
 		return nil, fmt.Errorf("not owner")
 	}
