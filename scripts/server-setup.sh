@@ -95,7 +95,40 @@ sudo ufw allow 22/tcp
 sudo ufw allow in on tailscale0
 sudo ufw --force enable
 
-# ---- 6. Backend .env ----
+# ---- 6. Ollama (local embeddings + chat for the RAG feature) ----
+# Set SKIP_OLLAMA=true to skip this if you're using Gemini/Groq/Anthropic
+# instead (see RAG_EMBED_PROVIDER / RAG_CHAT_PROVIDER in .env).
+# Pick up OLLAMA_EMBED_MODEL/OLLAMA_CHAT_MODEL from .env if it exists yet,
+# so a rerun after customizing those values pulls the right models.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
+if [ "${SKIP_OLLAMA:-false}" = "true" ]; then
+  log "SKIP_OLLAMA=true — skipping Ollama install"
+else
+  if ! command -v ollama >/dev/null 2>&1; then
+    log "Installing Ollama"
+    curl -fsSL https://ollama.com/install.sh | sh
+  else
+    log "Ollama already installed, skipping"
+  fi
+
+  log "Waiting for the Ollama service to accept connections"
+  for i in $(seq 1 30); do
+    curl -fsS http://localhost:11434/ >/dev/null 2>&1 && break
+    sleep 1
+  done
+
+  log "Pulling Ollama models (large first-time download — several GB, can take a while)"
+  ollama pull "${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
+  ollama pull "${OLLAMA_CHAT_MODEL:-llama3.2}"
+fi
+
+# ---- 7. Backend .env ----
 if [ ! -f .env ]; then
   log "No .env found — creating from .env.example"
   cp .env.example .env
@@ -108,14 +141,14 @@ if grep -q "CHANGE_ME" .env; then
   exit 1
 fi
 
-# ---- 7. Backend containers ----
+# ---- 8. Backend containers ----
 log "Starting backend containers (postgres, minio, clamd, backend)"
 sudo docker compose up -d --build
 
 log "Container status:"
 sudo docker ps -a
 
-# ---- 8. Frontend source ----
+# ---- 9. Frontend source ----
 if [ ! -d "$FRONTEND_DIR" ]; then
   log "Cloning react-dbms"
   git clone "$REACT_REPO_URL" "$FRONTEND_DIR"
@@ -129,7 +162,7 @@ log "Building frontend against Tailscale IP $TAILSCALE_IP"
   pnpm build
 )
 
-# ---- 9. Frontend systemd service ----
+# ---- 10. Frontend systemd service ----
 log "Installing systemd service for the frontend (survives reboots/crashes)"
 FRONTEND_ABS_PATH="$(cd "$FRONTEND_DIR" && pwd)"
 sudo tee /etc/systemd/system/react-dbms.service >/dev/null <<EOF

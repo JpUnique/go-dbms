@@ -57,6 +57,13 @@ services:
     build: .
     restart: unless-stopped
 
+    # Lets the container resolve "host.docker.internal" to the host machine
+    # on Linux (Docker Desktop does this automatically; plain Docker Engine
+    # does not). Needed so OLLAMA_BASE_URL can reach Ollama running on the
+    # host itself, since Ollama isn't one of the compose services.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     depends_on:
       postgres:
         condition: service_healthy
