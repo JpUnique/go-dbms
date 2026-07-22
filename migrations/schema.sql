@@ -415,3 +415,72 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS deleted_at   TIMESTAMPTZ;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+-- ===============================
+-- RAG / AI CHAT
+-- ===============================
+-- Requires the pgvector extension (image: pgvector/pgvector:pg16).
+CREATE EXTENSION IF NOT EXISTS "vector";
+
+-- Embedding dimension is 768 to match the two embed providers this app
+-- actually supports (internal/rag/providers.go): Ollama's nomic-embed-text
+-- and Gemini's text-embedding-004 both output 768-dim vectors. If a future
+-- provider uses a different dimension, this column (and any indexed data)
+-- must be recreated to match.
+CREATE TABLE IF NOT EXISTS document_chunks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  embedding VECTOR(768),
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(document_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document ON document_chunks(document_id);
+
+-- ivfflat needs at least one row to build; skip it on a brand-new empty
+-- table and let similarity search fall back to a sequential scan (fine
+-- at low volume) until a later migration/maintenance pass adds it.
+DO $$
+BEGIN
+  IF (SELECT COUNT(*) FROM document_chunks) > 0
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_class WHERE relname = 'idx_chunks_embedding'
+     ) THEN
+    CREATE INDEX idx_chunks_embedding ON document_chunks
+      USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT 'New Chat',
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
+
+CREATE OR REPLACE TRIGGER trg_chat_sessions_updated
+BEFORE UPDATE ON chat_sessions
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  sources JSONB,
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);

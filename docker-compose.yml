@@ -1,13 +1,13 @@
 services:
 
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
 
     environment:
       POSTGRES_DB: dms_db
       POSTGRES_USER: dms_user
-      POSTGRES_PASSWORD: dms_password
+      POSTGRES_PASSWORD: 52bd7455d17f58a2761600534ade77c8
 
     volumes:
       - dms_pgdata:/var/lib/postgresql/data
