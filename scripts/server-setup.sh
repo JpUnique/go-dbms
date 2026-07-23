@@ -40,9 +40,20 @@ sudo apt-get update -y
 sudo apt-get install -y git curl ufw ca-certificates gnupg
 
 # ---- 2. Docker ----
+# Uses the official apt repo directly with an explicit package list, rather
+# than the get.docker.com convenience script — that script once tried to
+# install an optional "docker-model-plugin" package that didn't exist for
+# an EOL Ubuntu release and aborted the whole install. This is more
+# predictable across Ubuntu versions.
 if ! command -v docker >/dev/null 2>&1; then
   log "Installing Docker"
-  curl -fsSL https://get.docker.com | sudo sh
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  sudo apt-get update
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   sudo usermod -aG docker "$SERVICE_USER"
   warn "Added $SERVICE_USER to the docker group — log out/in later for non-sudo docker to work. This script uses 'sudo docker' throughout, so it works regardless."
 else
