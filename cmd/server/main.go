@@ -152,6 +152,7 @@ func main() {
 		allowedOrigins := map[string]bool{
 			"http://localhost:3000":     true,
 			"http://140.238.79.81:3000": true, // Oracle Cloud deployment
+			"http://100.91.202.86:3000": true, // Physical server (Tailscale)
 			// Add production domain here later: "https://yourdomain.com": true,
 		}
 
